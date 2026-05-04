@@ -1,0 +1,50 @@
+package com.lqc.server.handler;
+
+import com.lqc.common.protocol.MessageType;
+import com.lqc.common.protocol.ProtocolMessage;
+import com.lqc.common.protocol.response.ErrorResponse;
+import com.lqc.common.util.JsonUtil;
+import com.lqc.server.ClientHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.EnumMap;
+import java.util.Map;
+
+public class RequestDispatcher {
+    private static final Logger logger = LoggerFactory.getLogger(RequestDispatcher.class);
+    private static final Map<MessageType, RequestHandler> handlers = new EnumMap<>(MessageType.class);
+
+    static {
+        handlers.put(MessageType.LOGIN_REQUEST, new LoginHandler());
+        handlers.put(MessageType.REGISTER_REQUEST, new RegisterHandler());
+        // Phase 3+ handlers will be added here
+    }
+
+    public static void dispatch(ClientHandler client, ProtocolMessage message) {
+        RequestHandler handler = handlers.get(message.getType());
+        if (handler == null) {
+            logger.warn("No handler for message type: {}", message.getType());
+            client.sendMessage(JsonUtil.wrap(MessageType.ERROR_RESPONSE,
+                    new ErrorResponse("Unknown message type: " + message.getType())));
+            return;
+        }
+
+        // All handlers except LOGIN and REGISTER require authentication
+        if (client.getAuthenticatedUser() == null
+                && message.getType() != MessageType.LOGIN_REQUEST
+                && message.getType() != MessageType.REGISTER_REQUEST) {
+            client.sendMessage(JsonUtil.wrap(MessageType.ERROR_RESPONSE,
+                    new ErrorResponse("Not authenticated")));
+            return;
+        }
+
+        try {
+            handler.handle(client, message);
+        } catch (Exception e) {
+            logger.error("Error handling {}", message.getType(), e);
+            client.sendMessage(JsonUtil.wrap(MessageType.ERROR_RESPONSE,
+                    new ErrorResponse("Internal server error")));
+        }
+    }
+}
