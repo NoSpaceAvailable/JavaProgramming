@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<StackPane xmlns:fx="http://javafx.com/fxml" styleClass="auth-wrapper"
+           fx:controller="com.lqc.client.controller.RegisterController">
+
+    <VBox styleClass="auth-card" maxWidth="420" maxHeight="600" spacing="8" alignment="CENTER">
+
+        <Label text="Create an account" styleClass="label-title"/>
+        <Label text="Join LQC Chat today" styleClass="label-subtitle"/>
+
+        <Region prefHeight="16"/>
+
+        <Label text="USERNAME" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
+               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+        <TextField fx:id="usernameField" promptText="Choose a username" maxWidth="Infinity"/>
+
+        <Region prefHeight="4"/>
+
+        <Label text="DISPLAY NAME" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
+               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+        <TextField fx:id="displayNameField" promptText="How should we call you?" maxWidth="Infinity"/>
+
+        <Region prefHeight="4"/>
+
+        <Label text="PASSWORD" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
+               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+        <PasswordField fx:id="passwordField" promptText="Create a password (min 6 characters)" maxWidth="Infinity"/>
+
+        <Region prefHeight="4"/>
+
+        <Label text="CONFIRM PASSWORD" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
+               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+        <PasswordField fx:id="confirmPasswordField" promptText="Confirm your password" maxWidth="Infinity"
+                       onAction="#handleRegister"/>
+
+        <Region prefHeight="4"/>
+
+        <Label fx:id="errorLabel" styleClass="label-error" wrapText="true" maxWidth="Infinity" visible="false"
+               managed="false"/>
+        <Label fx:id="successLabel" styleClass="label-success" wrapText="true" maxWidth="Infinity" visible="false"
+               managed="false"/>
+
+        <Region prefHeight="8"/>
+
+        <Button fx:id="registerButton" text="Register" styleClass="button-primary" maxWidth="Infinity"
+                onAction="#handleRegister"/>
+
+        <HBox alignment="CENTER" spacing="4">
+            <padding><Insets top="8"/></padding>
+            <Label text="Already have an account?" style="-fx-text-fill: #72767d; -fx-font-size: 13px;"/>
+            <Button text="Log In" styleClass="button-link" onAction="#switchToLogin"/>
+        </HBox>
+
+    </VBox>
+</StackPane>
