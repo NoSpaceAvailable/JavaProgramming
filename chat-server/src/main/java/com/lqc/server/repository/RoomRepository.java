@@ -47,6 +47,25 @@ public class RoomRepository {
         return rooms;
     }
 
+    public List<Room> findPublicRoomsNotJoinedByUserId(long userId) {
+        String sql = "SELECT r.id, r.name, r.description, r.owner_id, r.is_private, r.created_at " +
+                "FROM rooms r WHERE r.is_private = FALSE " +
+                "AND NOT EXISTS (SELECT 1 FROM room_members rm WHERE rm.room_id = r.id AND rm.user_id = ?) " +
+                "ORDER BY r.name";
+        List<Room> rooms = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, userId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                rooms.add(mapRoom(rs));
+            }
+        } catch (SQLException e) {
+            logger.error("Error finding public rooms not joined by user {}", userId, e);
+        }
+        return rooms;
+    }
+
     public Optional<Room> findById(long roomId) {
         String sql = "SELECT id, name, description, owner_id, is_private, created_at FROM rooms WHERE id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
@@ -88,28 +107,30 @@ public class RoomRepository {
         }
     }
 
-    public void addMember(long roomId, long userId, String role) {
+    public boolean addMember(long roomId, long userId, String role) {
         String sql = "INSERT INTO room_members (room_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT DO NOTHING";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, roomId);
             stmt.setLong(2, userId);
             stmt.setString(3, role);
-            stmt.executeUpdate();
+            return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.error("Error adding member {} to room {}", userId, roomId, e);
+            return false;
         }
     }
 
-    public void removeMember(long roomId, long userId) {
+    public boolean removeMember(long roomId, long userId) {
         String sql = "DELETE FROM room_members WHERE room_id = ? AND user_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, roomId);
             stmt.setLong(2, userId);
-            stmt.executeUpdate();
+            return stmt.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.error("Error removing member {} from room {}", userId, roomId, e);
+            return false;
         }
     }
 
