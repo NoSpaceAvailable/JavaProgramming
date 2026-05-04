@@ -1,4 +1,4 @@
-# LQC Chat - Mini Discord
+# Mini Discord
 
 A real-time multi-user chat application built with Java, inspired by Discord.
 
