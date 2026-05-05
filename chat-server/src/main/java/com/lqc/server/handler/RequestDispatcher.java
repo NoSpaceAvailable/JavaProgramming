@@ -18,7 +18,19 @@ public class RequestDispatcher {
     static {
         handlers.put(MessageType.LOGIN_REQUEST, new LoginHandler());
         handlers.put(MessageType.REGISTER_REQUEST, new RegisterHandler());
-        // Phase 3+ handlers will be added here
+
+        handlers.put(MessageType.CREATE_ROOM_REQUEST, new CreateRoomHandler());
+        handlers.put(MessageType.JOIN_ROOM_REQUEST, new JoinRoomHandler());
+        handlers.put(MessageType.LEAVE_ROOM_REQUEST, new LeaveRoomHandler());
+        handlers.put(MessageType.LIST_ROOMS_REQUEST, new ListRoomsHandler());
+        handlers.put(MessageType.LIST_PUBLIC_ROOMS_REQUEST, new ListPublicRoomsHandler());
+        handlers.put(MessageType.ROOM_MEMBERS_REQUEST, new RoomMembersHandler());
+        handlers.put(MessageType.LIST_USERS_REQUEST, new ListUsersHandler());
+
+        handlers.put(MessageType.SEND_MESSAGE_REQUEST, new SendMessageHandler());
+        handlers.put(MessageType.PRIVATE_MESSAGE_REQUEST, new PrivateMessageHandler());
+        handlers.put(MessageType.GET_HISTORY_REQUEST, new GetHistoryHandler());
+        handlers.put(MessageType.DM_HISTORY_REQUEST, new DmHistoryHandler());
     }
 
     public static void dispatch(ClientHandler client, ProtocolMessage message) {

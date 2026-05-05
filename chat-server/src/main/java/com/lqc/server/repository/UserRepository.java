@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public class UserRepository {
@@ -79,6 +81,46 @@ public class UserRepository {
         } catch (SQLException e) {
             logger.error("Error updating status for user {}", userId, e);
         }
+    }
+
+    public List<User> findAllExcept(long excludeUserId) {
+        String sql = "SELECT id, username, password_hash, display_name, avatar_url, status, created_at, last_seen_at " +
+                "FROM users WHERE id <> ? ORDER BY display_name";
+        List<User> users = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, excludeUserId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                User user = mapUser(rs);
+                user.setPasswordHash(null);
+                users.add(user);
+            }
+        } catch (SQLException e) {
+            logger.error("Error listing users", e);
+        }
+        return users;
+    }
+
+    public List<User> findByRoomId(long roomId) {
+        String sql = "SELECT u.id, u.username, u.password_hash, u.display_name, u.avatar_url, u.status, " +
+                "u.created_at, u.last_seen_at " +
+                "FROM users u INNER JOIN room_members rm ON u.id = rm.user_id " +
+                "WHERE rm.room_id = ? ORDER BY u.display_name";
+        List<User> users = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, roomId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                User user = mapUser(rs);
+                user.setPasswordHash(null);
+                users.add(user);
+            }
+        } catch (SQLException e) {
+            logger.error("Error listing room members for room {}", roomId, e);
+        }
+        return users;
     }
 
     public boolean existsByUsername(String username) {

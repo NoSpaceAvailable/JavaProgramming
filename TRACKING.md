@@ -5,8 +5,8 @@
 |-------|-------------|--------|-----------|
 | 1 | Project Setup + Basic Connectivity | DONE | 3-4 |
 | 2 | Authentication + Database | DONE | 3-4 |
-| 3 | Room Management + Group Chat | NOT STARTED | 4-5 |
-| 4 | Private Messaging + User Status | NOT STARTED | 3-4 |
+| 3 | Room Management + Group Chat | DONE | 4-5 |
+| 4 | Private Messaging + User Status | IN PROGRESS | 3-4 |
 | 5 | File Transfer | NOT STARTED | 3-4 |
 | 6 | Emoji Reactions | NOT STARTED | 2-3 |
 | 7 | Polish + Testing | NOT STARTED | 3-4 |
@@ -42,24 +42,25 @@
 - [x] Verify: Client shows login screen with dark theme
 
 ## Phase 3: Room Management + Group Chat
-- [ ] Implement RoomRepository + MessageRepository
-- [ ] Implement RoomService + MessageService
-- [ ] Implement SessionManager + RoomManager singletons
-- [ ] Implement CreateRoom/JoinRoom/LeaveRoom/SendMessage/History handlers
-- [ ] Build main-chat.fxml (3-panel layout)
-- [ ] Implement MainChatController
-- [ ] Implement RoomListCell + MessageBubble components
-- [ ] Implement real-time broadcasting
-- [ ] Verify: 2+ clients chat in rooms in real-time
+- [x] Implement RoomRepository + MessageRepository
+- [x] Implement RoomService + MessageService
+- [x] Implement SessionManager (RoomManager not needed — broadcast via SessionManager + room_members table)
+- [x] Implement CreateRoom/JoinRoom/LeaveRoom/SendMessage/History handlers
+- [x] Build main-chat.fxml (3-panel layout)
+- [x] Implement MainChatController
+- [x] Inline message bubble + room list cell rendering (no separate components)
+- [x] Implement real-time broadcasting
+- [ ] Verify: 2+ clients chat in rooms in real-time (manual test)
 
 ## Phase 4: Private Messaging + User Status
-- [ ] Implement private message routing
-- [ ] Add DM sidebar section in UI
+- [x] Implement private message routing (PrivateMessageHandler, DM history)
+- [x] Add DM sidebar section in UI
+- [x] User picker for starting new DMs (LIST_USERS_REQUEST)
 - [ ] Implement StatusUpdateRequest/StatusHandler
-- [ ] Implement StatusIndicator + UserListCell components
+- [ ] Implement StatusIndicator + UserListCell components (basic dot indicator added)
 - [ ] Add status dropdown in sidebar
-- [ ] Auto-mark OFFLINE on disconnect
-- [ ] Verify: DMs + status updates work in real-time
+- [x] Auto-mark OFFLINE on disconnect (already in ClientHandler.disconnect)
+- [ ] Verify: DMs + status updates work in real-time (manual test)
 
 ## Phase 5: File Transfer
 - [ ] Implement FileManager (disk storage)

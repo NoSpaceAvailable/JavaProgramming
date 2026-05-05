@@ -62,6 +62,22 @@ public class RoomRepository {
         return Optional.empty();
     }
 
+    public Optional<Room> findByName(String name) {
+        String sql = "SELECT id, name, description, owner_id, is_private, created_at " +
+                "FROM rooms WHERE LOWER(name) = LOWER(?)";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, name);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return Optional.of(mapRoom(rs));
+            }
+        } catch (SQLException e) {
+            logger.error("Error finding room by name {}", name, e);
+        }
+        return Optional.empty();
+    }
+
     public Room create(String name, String description, long ownerId, boolean isPrivate) {
         String sql = "INSERT INTO rooms (name, description, owner_id, is_private) VALUES (?, ?, ?, ?)";
         try (Connection conn = DatabaseConfig.getConnection();

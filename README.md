@@ -5,8 +5,8 @@ A real-time multi-user chat application built with Java, inspired by Discord.
 ## Features (Planned)
 
 - [x] User registration and login (BCrypt password hashing)
-- [ ] Group chat rooms (create, join, leave)
-- [ ] Private messaging (1-on-1 DMs)
+- [x] Group chat rooms (create, join, leave)
+- [x] Private messaging (1-on-1 DMs)
 - [ ] File transfer (chunked upload/download)
 - [ ] Emoji reactions on messages
 - [ ] Online/Away/Offline status indicators

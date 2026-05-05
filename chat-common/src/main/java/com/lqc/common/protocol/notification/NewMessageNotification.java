@@ -2,7 +2,8 @@ package com.lqc.common.protocol.notification;
 
 public class NewMessageNotification {
     private long messageId;
-    private long roomId;
+    private Long roomId;
+    private Long recipientId;
     private long senderId;
     private String senderName;
     private String content;
@@ -16,8 +17,11 @@ public class NewMessageNotification {
     public long getMessageId() { return messageId; }
     public void setMessageId(long messageId) { this.messageId = messageId; }
 
-    public long getRoomId() { return roomId; }
-    public void setRoomId(long roomId) { this.roomId = roomId; }
+    public Long getRoomId() { return roomId; }
+    public void setRoomId(Long roomId) { this.roomId = roomId; }
+
+    public Long getRecipientId() { return recipientId; }
+    public void setRecipientId(Long recipientId) { this.recipientId = recipientId; }
 
     public long getSenderId() { return senderId; }
     public void setSenderId(long senderId) { this.senderId = senderId; }
