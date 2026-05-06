@@ -1,6 +1,7 @@
 package com.lqc.common.model;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class Message {
     private long id;
@@ -11,6 +12,8 @@ public class Message {
     private String content;
     private MessageType messageType;
     private LocalDateTime createdAt;
+    private FileAttachment attachment;
+    private List<Reaction> reactions;
 
     public enum MessageType {
         TEXT, FILE, SYSTEM
@@ -48,4 +51,10 @@ public class Message {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public FileAttachment getAttachment() { return attachment; }
+    public void setAttachment(FileAttachment attachment) { this.attachment = attachment; }
+
+    public List<Reaction> getReactions() { return reactions; }
+    public void setReactions(List<Reaction> reactions) { this.reactions = reactions; }
 }

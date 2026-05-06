@@ -31,6 +31,14 @@ public class RequestDispatcher {
         handlers.put(MessageType.PRIVATE_MESSAGE_REQUEST, new PrivateMessageHandler());
         handlers.put(MessageType.GET_HISTORY_REQUEST, new GetHistoryHandler());
         handlers.put(MessageType.DM_HISTORY_REQUEST, new DmHistoryHandler());
+
+        handlers.put(MessageType.FILE_UPLOAD_START, new FileUploadStartHandler());
+        handlers.put(MessageType.FILE_UPLOAD_CHUNK, new FileUploadChunkHandler());
+        handlers.put(MessageType.FILE_UPLOAD_COMPLETE, new FileUploadCompleteHandler());
+        handlers.put(MessageType.FILE_DOWNLOAD_REQUEST, new FileDownloadHandler());
+
+        handlers.put(MessageType.ADD_REACTION_REQUEST, new AddReactionHandler());
+        handlers.put(MessageType.REMOVE_REACTION_REQUEST, new RemoveReactionHandler());
     }
 
     public static void dispatch(ClientHandler client, ProtocolMessage message) {

@@ -5,13 +5,76 @@ import com.lqc.server.database.DatabaseConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lqc.common.model.FileAttachment;
+import com.lqc.common.model.Reaction;
+
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 public class MessageRepository {
     private static final Logger logger = LoggerFactory.getLogger(MessageRepository.class);
+
+    private final FileAttachmentRepository fileAttachmentRepository = new FileAttachmentRepository();
+    private final ReactionRepository reactionRepository = new ReactionRepository();
+
+    public Optional<Message> findById(long messageId) {
+        String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
+                "m.created_at, u.display_name AS sender_name " +
+                "FROM messages m INNER JOIN users u ON m.sender_id = u.id WHERE m.id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, messageId);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) return Optional.of(mapMessage(rs));
+        } catch (SQLException e) {
+            logger.error("Error finding message {}", messageId, e);
+        }
+        return Optional.empty();
+    }
+
+    public Message saveFileMessage(Long roomId, long senderId, String senderName,
+                                    Long recipientId, String content) {
+        String sql;
+        boolean isDm = roomId == null;
+        if (isDm) {
+            sql = "INSERT INTO messages (sender_id, recipient_id, content, message_type) " +
+                    "VALUES (?, ?, ?, 'FILE') RETURNING id, created_at";
+        } else {
+            sql = "INSERT INTO messages (room_id, sender_id, content, message_type) " +
+                    "VALUES (?, ?, ?, 'FILE') RETURNING id, created_at";
+        }
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            if (isDm) {
+                stmt.setLong(1, senderId);
+                stmt.setLong(2, recipientId);
+                stmt.setString(3, content);
+            } else {
+                stmt.setLong(1, roomId);
+                stmt.setLong(2, senderId);
+                stmt.setString(3, content);
+            }
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                Message m = new Message(senderId, senderName, content);
+                m.setMessageType(Message.MessageType.FILE);
+                m.setId(rs.getLong("id"));
+                m.setRoomId(roomId);
+                m.setRecipientId(recipientId);
+                Timestamp t = rs.getTimestamp("created_at");
+                if (t != null) m.setCreatedAt(t.toLocalDateTime());
+                return m;
+            }
+            throw new SQLException("Failed to insert file message");
+        } catch (SQLException e) {
+            logger.error("Error saving file message", e);
+            throw new RuntimeException("Failed to save file message", e);
+        }
+    }
 
     public Message saveRoomMessage(long roomId, long senderId, String senderName, String content) {
         String sql = "INSERT INTO messages (room_id, sender_id, content, message_type) " +
@@ -111,7 +174,21 @@ public class MessageRepository {
         } catch (SQLException e) {
             logger.error("Error querying messages", e);
         }
+        hydrateAttachmentsAndReactions(messages);
         return messages;
+    }
+
+    private void hydrateAttachmentsAndReactions(List<Message> messages) {
+        if (messages.isEmpty()) return;
+        List<Long> ids = messages.stream().map(Message::getId).toList();
+        Map<Long, FileAttachment> attachments = fileAttachmentRepository.findByMessageIds(ids);
+        Map<Long, List<Reaction>> reactions = reactionRepository.findByMessageIds(ids);
+        for (Message m : messages) {
+            FileAttachment a = attachments.get(m.getId());
+            if (a != null) m.setAttachment(a);
+            List<Reaction> r = reactions.get(m.getId());
+            if (r != null) m.setReactions(r);
+        }
     }
 
     private Message mapMessage(ResultSet rs) throws SQLException {

@@ -7,8 +7,8 @@
 | 2 | Authentication + Database | DONE | 3-4 |
 | 3 | Room Management + Group Chat | DONE | 4-5 |
 | 4 | Private Messaging + User Status | IN PROGRESS | 3-4 |
-| 5 | File Transfer | NOT STARTED | 3-4 |
-| 6 | Emoji Reactions | NOT STARTED | 2-3 |
+| 5 | File Transfer | DONE | 3-4 |
+| 6 | Emoji Reactions | DONE | 2-3 |
 | 7 | Polish + Testing | NOT STARTED | 3-4 |
 
 ---
@@ -63,19 +63,20 @@
 - [ ] Verify: DMs + status updates work in real-time (manual test)
 
 ## Phase 5: File Transfer
-- [ ] Implement FileManager (disk storage)
-- [ ] Implement FileRepository + FileService
-- [ ] Implement FileTransferHandler (server) + FileTransferClient (client)
-- [ ] Implement FilePreview component
-- [ ] Add FileChooser for upload/download
-- [ ] Verify: File upload + download works
+- [x] FileService (disk storage under file.storage.path, tmp + final dirs, SHA-256)
+- [x] FileAttachmentRepository + FileService
+- [x] FileUploadStart/Chunk/Complete + FileDownload handlers
+- [x] FileTransferClient drives chunked upload/download with progress callbacks
+- [x] Inline file message rendering with download button (no separate component)
+- [x] FileChooser for upload/download
+- [ ] Verify: File upload + download works (manual test)
 
 ## Phase 6: Emoji Reactions
-- [ ] Implement ReactionRepository + ReactionService + ReactionHandler
-- [ ] Create EmojiPicker component + EmojiData
-- [ ] Add reaction context menu on messages
-- [ ] Display reaction badges
-- [ ] Verify: Reactions persist and display correctly
+- [x] ReactionRepository + ReactionService + Add/Remove handlers
+- [x] Inline emoji palette via right-click context menu (👍 ❤ 😂 🎉 😮 😢 🔥 👀)
+- [x] Reaction context menu on messages
+- [x] Reaction badges with click-to-toggle
+- [ ] Verify: Reactions persist and display correctly (manual test)
 
 ## Phase 7: Polish + Testing
 - [ ] Graceful disconnect handling

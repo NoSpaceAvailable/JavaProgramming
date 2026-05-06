@@ -11,6 +11,8 @@ public class NewMessageNotification {
     private long timestamp;
     private Long fileAttachmentId;
     private String fileName;
+    private Long fileSize;
+    private String mimeType;
 
     public NewMessageNotification() {}
 
@@ -43,4 +45,10 @@ public class NewMessageNotification {
 
     public String getFileName() { return fileName; }
     public void setFileName(String fileName) { this.fileName = fileName; }
+
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public String getMimeType() { return mimeType; }
+    public void setMimeType(String mimeType) { this.mimeType = mimeType; }
 }

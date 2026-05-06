@@ -68,8 +68,14 @@
             <bottom>
                 <VBox styleClass="message-input-bar">
                     <padding><Insets top="8"/></padding>
-                    <TextField fx:id="messageInput" styleClass="message-input"
-                               promptText="Send a message..." onAction="#handleSendMessage" disable="true"/>
+                    <HBox spacing="8" alignment="CENTER">
+                        <Button fx:id="attachButton" text="📎" styleClass="button-link"
+                                style="-fx-font-size: 18px;" onAction="#handleAttachFile" disable="true"/>
+                        <TextField fx:id="messageInput" styleClass="message-input" HBox.hgrow="ALWAYS"
+                                   promptText="Send a message..." onAction="#handleSendMessage" disable="true"/>
+                    </HBox>
+                    <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b9bbbe; -fx-font-size: 11px;"
+                           visible="false" managed="false"/>
                 </VBox>
             </bottom>
         </BorderPane>
