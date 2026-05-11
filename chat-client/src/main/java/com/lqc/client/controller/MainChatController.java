@@ -9,10 +9,12 @@ import com.lqc.common.model.Message;
 import com.lqc.common.model.Reaction;
 import com.lqc.common.model.Room;
 import com.lqc.common.model.User;
+import com.lqc.common.model.UserStatus;
 import com.lqc.common.protocol.MessageType;
 import com.lqc.common.protocol.ProtocolMessage;
 import com.lqc.common.protocol.notification.NewMessageNotification;
 import com.lqc.common.protocol.notification.ReactionNotification;
+import com.lqc.common.protocol.notification.StatusChangeNotification;
 import com.lqc.common.protocol.notification.UserJoinedNotification;
 import com.lqc.common.protocol.notification.UserLeftNotification;
 import com.lqc.common.protocol.request.*;
@@ -37,9 +39,12 @@ import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,9 +66,11 @@ public class MainChatController implements MessageListener {
     @FXML private TextField messageInput;
     @FXML private Button attachButton;
     @FXML private Label uploadStatusLabel;
+    @FXML private ComboBox<UserStatus> statusCombo;
 
     private final ServerConnection connection = ServerConnection.getInstance();
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("MMM d, HH:mm");
 
     private long currentUserId;
     private String currentDisplayName;
@@ -75,15 +82,24 @@ public class MainChatController implements MessageListener {
     private final Map<Long, User> knownUsers = new LinkedHashMap<>();
     // messageId -> rendered bubble container (so we can update reaction badges in place).
     private final Map<Long, MessageBubble> bubbles = new LinkedHashMap<>();
+    // Unread counters keyed by conversation id (roomId or peer userId).
+    private final Map<Long, Integer> roomUnread = new HashMap<>();
+    private final Map<Long, Integer> dmUnread = new HashMap<>();
+    // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
+    private final Map<Long, UserStatus> userStatuses = new HashMap<>();
+    private boolean suppressStatusEvents;
 
     private static final List<String> EMOJI_PALETTE = List.of(
             "👍", "❤", "😂", "🎉", "😮", "😢", "🔥", "👀");
 
     private Conversation active;
 
+    private final Runnable disconnectHandler = this::onServerDisconnected;
+
     @FXML
     public void initialize() {
         connection.addListener(this);
+        connection.addDisconnectListener(disconnectHandler);
         FileTransferClient.getInstance().ensureRegistered();
 
         roomListView.setItems(rooms);
@@ -91,7 +107,15 @@ public class MainChatController implements MessageListener {
             @Override
             protected void updateItem(Room item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? null : "# " + item.getName());
+                if (empty || item == null) {
+                    setText(null);
+                    return;
+                }
+                int unread = roomUnread.getOrDefault(item.getId(), 0);
+                setText(unread > 0
+                        ? "# " + item.getName() + "  (" + unread + ")"
+                        : "# " + item.getName());
+                setStyle(unread > 0 ? "-fx-font-weight: bold; -fx-text-fill: #ffffff;" : "");
             }
         });
         roomListView.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
@@ -106,7 +130,17 @@ public class MainChatController implements MessageListener {
             @Override
             protected void updateItem(DmEntry item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? null : "@ " + item.displayName);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                    return;
+                }
+                String dot = statusDot(userStatuses.get(item.userId));
+                int unread = dmUnread.getOrDefault(item.userId, 0);
+                String label = dot + " @" + item.displayName;
+                if (unread > 0) label = label + "  (" + unread + ")";
+                setText(label);
+                setStyle(unread > 0 ? "-fx-font-weight: bold; -fx-text-fill: #ffffff;" : "");
             }
         });
         dmListView.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
@@ -125,12 +159,8 @@ public class MainChatController implements MessageListener {
                     setText(null);
                     return;
                 }
-                String dot = switch (user.getStatus()) {
-                    case ONLINE -> "● ";
-                    case AWAY -> "◐ ";
-                    case OFFLINE -> "○ ";
-                };
-                setText(dot + user.getDisplayName());
+                UserStatus liveStatus = userStatuses.getOrDefault(user.getId(), user.getStatus());
+                setText(statusDot(liveStatus) + " " + user.getDisplayName());
             }
         });
         memberListView.setOnMouseClicked(e -> {
@@ -139,6 +169,23 @@ public class MainChatController implements MessageListener {
                 if (u != null && u.getId() != currentUserId) startDm(u);
             }
         });
+
+        statusCombo.getItems().setAll(UserStatus.ONLINE, UserStatus.AWAY);
+        statusCombo.setValue(UserStatus.ONLINE);
+        statusCombo.valueProperty().addListener((obs, oldV, newV) -> {
+            if (suppressStatusEvents || newV == null) return;
+            connection.send(JsonUtil.wrap(MessageType.STATUS_UPDATE_REQUEST,
+                    new StatusUpdateRequest(newV)));
+        });
+    }
+
+    private static String statusDot(UserStatus status) {
+        if (status == null) return "○";
+        return switch (status) {
+            case ONLINE -> "●";
+            case AWAY -> "◐";
+            case OFFLINE -> "○";
+        };
     }
 
     public void initWithUser(long userId, String displayName, List<Room> initialRooms) {
@@ -285,14 +332,24 @@ public class MainChatController implements MessageListener {
     @FXML
     private void handleLogout() {
         connection.removeListener(this);
+        connection.removeDisconnectListener(disconnectHandler);
         connection.disconnect();
         SceneManager.switchTo("login");
+    }
+
+    private void onServerDisconnected() {
+        connectionLabel.setText("Disconnected");
+        connectionLabel.setStyle("-fx-text-fill: #f04747; -fx-font-size: 12px;");
+        messageInput.setDisable(true);
+        attachButton.setDisable(true);
+        statusCombo.setDisable(true);
     }
 
     // ---- Conversation switching ----
 
     private void openRoom(Room room) {
         active = new Conversation(Conversation.Kind.ROOM, room.getId(), room.getName());
+        if (roomUnread.remove(room.getId()) != null) roomListView.refresh();
         conversationTitle.setText("# " + room.getName());
         leaveButton.setVisible(true);
         leaveButton.setManaged(true);
@@ -312,6 +369,7 @@ public class MainChatController implements MessageListener {
 
     private void openDm(DmEntry dm) {
         active = new Conversation(Conversation.Kind.DM, dm.userId, dm.displayName);
+        if (dmUnread.remove(dm.userId) != null) dmListView.refresh();
         conversationTitle.setText("@ " + dm.displayName);
         leaveButton.setVisible(false);
         leaveButton.setManaged(false);
@@ -359,6 +417,8 @@ public class MainChatController implements MessageListener {
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case NEW_MESSAGE_NOTIFICATION -> onNewMessage(message);
             case REACTION_NOTIFICATION -> onReactionNotification(message);
+            case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
+            case STATUS_UPDATE_RESPONSE -> onStatusUpdateResponse(message);
             case USER_JOINED_NOTIFICATION -> onUserJoined(message);
             case USER_LEFT_NOTIFICATION -> onUserLeft(message);
             case ERROR_RESPONSE -> onError(message);
@@ -447,7 +507,10 @@ public class MainChatController implements MessageListener {
         if (active == null || active.kind != Conversation.Kind.ROOM || active.id != r.getRoomId()) return;
         if (r.getMembers() != null) {
             members.setAll(r.getMembers());
-            for (User u : r.getMembers()) knownUsers.put(u.getId(), u);
+            for (User u : r.getMembers()) {
+                knownUsers.put(u.getId(), u);
+                if (u.getStatus() != null) userStatuses.put(u.getId(), u.getStatus());
+            }
             membersTitle.setText("MEMBERS — " + r.getMembers().size());
         }
     }
@@ -456,7 +519,11 @@ public class MainChatController implements MessageListener {
         UserListResponse r = JsonUtil.fromJson(m.getPayload(), UserListResponse.class);
         if (r.getUsers() != null) {
             knownUsers.clear();
-            for (User u : r.getUsers()) knownUsers.put(u.getId(), u);
+            for (User u : r.getUsers()) {
+                knownUsers.put(u.getId(), u);
+                if (u.getStatus() != null) userStatuses.put(u.getId(), u.getStatus());
+            }
+            dmListView.refresh();
         }
     }
 
@@ -481,8 +548,13 @@ public class MainChatController implements MessageListener {
         NewMessageNotification n = JsonUtil.fromJson(m.getPayload(), NewMessageNotification.class);
         boolean isRoom = n.getRoomId() != null && n.getRoomId() > 0;
         if (isRoom) {
-            if (active != null && active.kind == Conversation.Kind.ROOM && active.id == n.getRoomId()) {
+            boolean isActive = active != null && active.kind == Conversation.Kind.ROOM
+                    && active.id == n.getRoomId();
+            if (isActive) {
                 appendAndScroll(n);
+            } else if (n.getSenderId() != currentUserId) {
+                roomUnread.merge(n.getRoomId(), 1, Integer::sum);
+                roomListView.refresh();
             }
             return;
         }
@@ -499,8 +571,12 @@ public class MainChatController implements MessageListener {
             entry = new DmEntry(peerId, name);
             dms.add(entry);
         }
-        if (active != null && active.kind == Conversation.Kind.DM && active.id == peerId) {
+        boolean isActiveDm = active != null && active.kind == Conversation.Kind.DM && active.id == peerId;
+        if (isActiveDm) {
             appendAndScroll(n);
+        } else if (n.getSenderId() != currentUserId) {
+            dmUnread.merge(peerId, 1, Integer::sum);
+            dmListView.refresh();
         }
     }
 
@@ -522,6 +598,24 @@ public class MainChatController implements MessageListener {
             messagesBox.getChildren().add(renderSystem(n.getDisplayName() + " left."));
             scrollToBottom();
         }
+    }
+
+    private void onStatusChange(ProtocolMessage m) {
+        StatusChangeNotification n = JsonUtil.fromJson(m.getPayload(), StatusChangeNotification.class);
+        userStatuses.put(n.getUserId(), n.getStatus());
+        User cached = knownUsers.get(n.getUserId());
+        if (cached != null) cached.setStatus(n.getStatus());
+        dmListView.refresh();
+        memberListView.refresh();
+    }
+
+    private void onStatusUpdateResponse(ProtocolMessage m) {
+        StatusUpdateResponse r = JsonUtil.fromJson(m.getPayload(), StatusUpdateResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        userStatuses.put(currentUserId, r.getStatus());
     }
 
     private void onReactionNotification(ProtocolMessage m) {
@@ -708,7 +802,16 @@ public class MainChatController implements MessageListener {
     }
 
     private String formatTime(long epochMillis) {
-        return Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(TIME_FMT);
+        LocalDateTime when = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault());
+        LocalDate today = LocalDate.now();
+        LocalDate messageDate = when.toLocalDate();
+        if (messageDate.equals(today)) {
+            return "Today " + when.format(TIME_FMT);
+        }
+        if (messageDate.equals(today.minusDays(1))) {
+            return "Yesterday " + when.format(TIME_FMT);
+        }
+        return when.format(DATE_TIME_FMT);
     }
 
     private void scrollToBottom() {

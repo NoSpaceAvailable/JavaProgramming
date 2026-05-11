@@ -23,6 +23,7 @@ public class ServerConnection {
     private Thread listenerThread;
     private volatile boolean connected;
     private final List<MessageListener> listeners = new CopyOnWriteArrayList<>();
+    private final List<Runnable> disconnectListeners = new CopyOnWriteArrayList<>();
 
     private ServerConnection() {}
 
@@ -44,30 +45,39 @@ public class ServerConnection {
 
     private void startListening() {
         listenerThread = new Thread(() -> {
-            while (connected) {
-                try {
+            try {
+                while (connected) {
                     int length = in.readInt();
                     byte[] buffer = new byte[length];
                     in.readFully(buffer);
                     String json = new String(buffer, StandardCharsets.UTF_8);
                     ProtocolMessage message = JsonUtil.fromJson(json, ProtocolMessage.class);
-
                     logger.debug("Received: {}", message.getType());
                     notifyListeners(message);
-                } catch (EOFException e) {
-                    connected = false;
-                    logger.info("Server disconnected");
-                } catch (IOException e) {
-                    if (connected) {
-                        logger.error("Read error", e);
-                        connected = false;
-                    }
                 }
+            } catch (EOFException e) {
+                logger.info("Server disconnected");
+            } catch (IOException e) {
+                if (connected) logger.error("Read error", e);
+            } finally {
+                connected = false;
+                notifyDisconnect();
             }
         }, "ServerListener");
         listenerThread.setDaemon(true);
         listenerThread.start();
     }
+
+    private void notifyDisconnect() {
+        Platform.runLater(() -> {
+            for (Runnable r : disconnectListeners) {
+                try { r.run(); } catch (Exception e) { logger.warn("disconnect listener threw", e); }
+            }
+        });
+    }
+
+    public void addDisconnectListener(Runnable r) { disconnectListeners.add(r); }
+    public void removeDisconnectListener(Runnable r) { disconnectListeners.remove(r); }
 
     public void send(ProtocolMessage message) {
         try {

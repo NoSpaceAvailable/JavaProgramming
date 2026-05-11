@@ -10,7 +10,15 @@ import java.util.Optional;
 
 public class AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
-    private final UserRepository userRepository = new UserRepository();
+    private final UserRepository userRepository;
+
+    public AuthService() {
+        this(new UserRepository());
+    }
+
+    public AuthService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     public record RegisterResult(boolean success, String message, User user) {}
     public record LoginResult(boolean success, String message, User user) {}

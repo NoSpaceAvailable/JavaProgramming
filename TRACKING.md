@@ -6,10 +6,10 @@
 | 1 | Project Setup + Basic Connectivity | DONE | 3-4 |
 | 2 | Authentication + Database | DONE | 3-4 |
 | 3 | Room Management + Group Chat | DONE | 4-5 |
-| 4 | Private Messaging + User Status | IN PROGRESS | 3-4 |
+| 4 | Private Messaging + User Status | DONE | 3-4 |
 | 5 | File Transfer | DONE | 3-4 |
 | 6 | Emoji Reactions | DONE | 2-3 |
-| 7 | Polish + Testing | NOT STARTED | 3-4 |
+| 7 | Polish + Testing | DONE | 3-4 |
 
 ---
 
@@ -56,10 +56,10 @@
 - [x] Implement private message routing (PrivateMessageHandler, DM history)
 - [x] Add DM sidebar section in UI
 - [x] User picker for starting new DMs (LIST_USERS_REQUEST)
-- [ ] Implement StatusUpdateRequest/StatusHandler
-- [ ] Implement StatusIndicator + UserListCell components (basic dot indicator added)
-- [ ] Add status dropdown in sidebar
-- [x] Auto-mark OFFLINE on disconnect (already in ClientHandler.disconnect)
+- [x] StatusUpdateRequest/StatusUpdateHandler
+- [x] Status dot indicator on DM list, member list, user picker
+- [x] Status dropdown in sidebar (ONLINE / AWAY)
+- [x] Auto-mark OFFLINE on disconnect (ClientHandler.disconnect)
 - [ ] Verify: DMs + status updates work in real-time (manual test)
 
 ## Phase 5: File Transfer
@@ -79,11 +79,17 @@
 - [ ] Verify: Reactions persist and display correctly (manual test)
 
 ## Phase 7: Polish + Testing
-- [ ] Graceful disconnect handling
-- [ ] Input validation
-- [ ] Unread message badges
-- [ ] Formatted timestamps
-- [ ] System messages
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Verify: Full end-to-end with 3+ clients
+- [x] Graceful disconnect handling (ServerConnection disconnect listener, "Disconnected" label)
+- [x] Input validation (length + emptiness checks on send / register / room create)
+- [x] Unread message badges on rooms and DMs
+- [x] Formatted timestamps (Today HH:mm / Yesterday HH:mm / MMM d HH:mm)
+- [x] System messages on join/leave
+- [x] Unit tests (AuthServiceTest — 7 cases, surefire 3.2.5)
+- [ ] Integration tests (manual multi-client smoke test still recommended)
+- [ ] Verify: Full end-to-end with 3+ clients (manual)
+
+## Optimizations
+- FileTransferClient uses a shared 2-thread daemon executor instead of `new Thread()` per chunk
+- File upload keeps a single RandomAccessFile open per session (no reopen per chunk)
+- File download likewise keeps a single writer open per session
+- Reusable status-dot helper; ListView.refresh() instead of rebuilding cells

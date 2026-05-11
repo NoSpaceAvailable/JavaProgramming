@@ -39,6 +39,8 @@ public class RequestDispatcher {
 
         handlers.put(MessageType.ADD_REACTION_REQUEST, new AddReactionHandler());
         handlers.put(MessageType.REMOVE_REACTION_REQUEST, new RemoveReactionHandler());
+
+        handlers.put(MessageType.STATUS_UPDATE_REQUEST, new StatusUpdateHandler());
     }
 
     public static void dispatch(ClientHandler client, ProtocolMessage message) {

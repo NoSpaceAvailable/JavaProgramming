@@ -25,6 +25,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
@@ -39,6 +41,11 @@ public class FileTransferClient implements MessageListener {
     private final ServerConnection connection = ServerConnection.getInstance();
     private final ConcurrentHashMap<String, UploadSession> uploads = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, DownloadSession> downloads = new ConcurrentHashMap<>();
+    private final ExecutorService ioExecutor = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "file-transfer-io");
+        t.setDaemon(true);
+        return t;
+    });
     private boolean registered;
 
     public synchronized void ensureRegistered() {
@@ -115,12 +122,14 @@ public class FileTransferClient implements MessageListener {
         UploadSession session = uploads.get(ack.getFileId());
         if (session == null) return;
         if (!ack.isSuccess()) {
+            closeUploadReader(session);
             uploads.remove(session.fileId);
             Platform.runLater(() -> session.callback.onError(ack.getMessage()));
             return;
         }
         Platform.runLater(() -> session.callback.onProgress(ack.getBytesReceived(), session.fileSize));
         if (ack.getBytesReceived() >= session.fileSize) {
+            closeUploadReader(session);
             sendComplete(session);
         } else {
             sendNextChunk(session);
@@ -131,6 +140,7 @@ public class FileTransferClient implements MessageListener {
         FileUploadCompleteResponse r = JsonUtil.fromJson(message.getPayload(), FileUploadCompleteResponse.class);
         UploadSession session = findUploadByCompleteRequestId(message.getRequestId());
         if (session == null) return;
+        closeUploadReader(session);
         uploads.remove(session.fileId);
         if (r.isSuccess()) {
             Platform.runLater(() -> session.callback.onComplete(r.getMessageId(), r.getAttachmentId()));
@@ -164,6 +174,7 @@ public class FileTransferClient implements MessageListener {
         try {
             Files.deleteIfExists(session.savePath);
             Files.createFile(session.savePath);
+            session.writer = new RandomAccessFile(session.savePath.toFile(), "rw");
         } catch (IOException e) {
             downloads.remove(session.attachmentId);
             Platform.runLater(() -> session.callback.onError("Cannot create file: " + e.getMessage()));
@@ -173,14 +184,15 @@ public class FileTransferClient implements MessageListener {
     private void onDownloadChunk(ProtocolMessage message) {
         FileChunkResponse chunk = JsonUtil.fromJson(message.getPayload(), FileChunkResponse.class);
         DownloadSession session = downloads.get(chunk.getAttachmentId());
-        if (session == null) return;
-        try (RandomAccessFile raf = new RandomAccessFile(session.savePath.toFile(), "rw")) {
+        if (session == null || session.writer == null) return;
+        try {
             byte[] data = Base64.getDecoder().decode(chunk.getData());
-            raf.seek((long) chunk.getChunkIndex() * 65536);
-            raf.write(data);
+            session.writer.seek((long) chunk.getChunkIndex() * 65536);
+            session.writer.write(data);
             session.bytesWritten += data.length;
             Platform.runLater(() -> session.callback.onProgress(session.bytesWritten, session.fileSize));
         } catch (IOException e) {
+            closeDownloadWriter(session);
             downloads.remove(session.attachmentId);
             Platform.runLater(() -> session.callback.onError("Write error: " + e.getMessage()));
         }
@@ -190,21 +202,32 @@ public class FileTransferClient implements MessageListener {
         FileDownloadStartResponse r = JsonUtil.fromJson(message.getPayload(), FileDownloadStartResponse.class);
         DownloadSession session = downloads.remove(r.getAttachmentId());
         if (session == null) return;
+        closeDownloadWriter(session);
         Platform.runLater(() -> session.callback.onComplete(session.savePath));
     }
 
+    private void closeDownloadWriter(DownloadSession session) {
+        if (session.writer != null) {
+            try { session.writer.close(); } catch (IOException ignored) {}
+            session.writer = null;
+        }
+    }
+
     private void sendNextChunk(UploadSession session) {
-        new Thread(() -> {
-            try (RandomAccessFile raf = new RandomAccessFile(session.path.toFile(), "r")) {
+        ioExecutor.submit(() -> {
+            try {
                 long offset = (long) session.nextChunkIndex * session.chunkSize;
                 if (offset >= session.fileSize) {
                     sendComplete(session);
                     return;
                 }
-                raf.seek(offset);
+                if (session.reader == null) {
+                    session.reader = new RandomAccessFile(session.path.toFile(), "r");
+                }
+                session.reader.seek(offset);
                 int toRead = (int) Math.min(session.chunkSize, session.fileSize - offset);
                 byte[] buf = new byte[toRead];
-                raf.readFully(buf);
+                session.reader.readFully(buf);
                 session.digest.update(buf);
 
                 FileChunkRequest req = new FileChunkRequest();
@@ -215,10 +238,18 @@ public class FileTransferClient implements MessageListener {
                 connection.send(JsonUtil.wrap(MessageType.FILE_UPLOAD_CHUNK, req));
             } catch (IOException e) {
                 logger.error("Upload read error", e);
+                closeUploadReader(session);
                 uploads.remove(session.fileId);
                 Platform.runLater(() -> session.callback.onError("Read error: " + e.getMessage()));
             }
-        }, "upload-" + session.fileId).start();
+        });
+    }
+
+    private void closeUploadReader(UploadSession session) {
+        if (session.reader != null) {
+            try { session.reader.close(); } catch (IOException ignored) {}
+            session.reader = null;
+        }
     }
 
     private void sendComplete(UploadSession session) {
@@ -278,6 +309,7 @@ public class FileTransferClient implements MessageListener {
         int nextChunkIndex = 0;
         String startRequestId;
         String completeRequestId;
+        RandomAccessFile reader;
 
         UploadSession(Path path, long fileSize, String mimeType, UploadCallback callback) {
             this.path = path;
@@ -301,6 +333,7 @@ public class FileTransferClient implements MessageListener {
         int totalChunks;
         long bytesWritten;
         boolean started;
+        RandomAccessFile writer;
 
         DownloadSession(long attachmentId, String fileName, Path savePath, DownloadCallback callback) {
             this.attachmentId = attachmentId;

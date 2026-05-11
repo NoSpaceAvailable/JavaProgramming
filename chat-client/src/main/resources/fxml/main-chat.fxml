@@ -37,8 +37,10 @@
             </HBox>
             <ListView fx:id="dmListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="200"/>
 
-            <HBox style="-fx-padding: 8 16; -fx-background-color: #292b2f;" alignment="CENTER_LEFT">
+            <HBox style="-fx-padding: 8 16; -fx-background-color: #292b2f;" alignment="CENTER_LEFT" spacing="8">
                 <Label fx:id="connectionLabel" text="Connected" style="-fx-text-fill: #43b581; -fx-font-size: 12px;"/>
+                <ComboBox fx:id="statusCombo" prefWidth="100"
+                          style="-fx-background-color: #2f3136; -fx-text-fill: #dcddde;"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Button text="Logout" styleClass="button-link" onAction="#handleLogout"/>
             </HBox>
