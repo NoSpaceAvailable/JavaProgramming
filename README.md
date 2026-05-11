@@ -9,9 +9,9 @@ A real-time multi-user chat application built with Java, inspired by Discord.
 - [x] Private messaging (1-on-1 DMs)
 - [x] File transfer (chunked upload/download)
 - [x] Emoji reactions on messages
-- [ ] Online/Away/Offline status indicators
-- [ ] Message history with pagination
-- [ ] Discord-inspired dark theme UI
+- [x] Online/Away/Offline status indicators
+- [x] Message history with pagination
+- [x] Discord-inspired dark theme UI
 
 ## Tech Stack
 
