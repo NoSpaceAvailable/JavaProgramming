@@ -81,7 +81,7 @@ db.password=YOUR_PASSWORD_HERE
 
 From the project root directory:
 ```bash
-mvn clean install
+mvn clean install -p # ensure maven doesn't use cached packages
 ```
 
 All three modules (chat-common, chat-server, chat-client) will be compiled and packaged.
@@ -90,7 +90,7 @@ All three modules (chat-common, chat-server, chat-client) will be compiled and p
 
 ```bash
 cd chat-server
-mvn exec:java
+mvn exec:java "-Dexec.mainClass=com.lqc.server.ChatServer" "-Duser.timezone=UTC"
 ```
 
 You should see:
