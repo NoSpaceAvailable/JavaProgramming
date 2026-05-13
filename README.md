@@ -90,7 +90,7 @@ All three modules (chat-common, chat-server, chat-client) will be compiled and p
 
 ```bash
 cd chat-server
-mvn exec:java -Dexec.mainClass=com.lqc.server.ChatServer
+mvn exec:java
 ```
 
 You should see:
