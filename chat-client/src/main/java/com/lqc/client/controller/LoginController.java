@@ -72,6 +72,9 @@ public class LoginController implements MessageListener {
                 showError(response.getMessage());
                 loginButton.setDisable(false);
             }
+        } else if (message.getType() == MessageType.ERROR_RESPONSE) {
+            showError("Server error — please try again");
+            loginButton.setDisable(false);
         }
     }
 

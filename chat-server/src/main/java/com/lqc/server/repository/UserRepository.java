@@ -25,7 +25,7 @@ public class UserRepository {
                 return Optional.of(mapUser(rs));
             }
             return Optional.empty();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             logger.error("Error finding user by username: {}", username, e);
             return Optional.empty();
         }
@@ -42,7 +42,7 @@ public class UserRepository {
                 return Optional.of(mapUser(rs));
             }
             return Optional.empty();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             logger.error("Error finding user by id: {}", id, e);
             return Optional.empty();
         }
@@ -96,7 +96,7 @@ public class UserRepository {
                 user.setPasswordHash(null);
                 users.add(user);
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             logger.error("Error listing users", e);
         }
         return users;
@@ -117,7 +117,7 @@ public class UserRepository {
                 user.setPasswordHash(null);
                 users.add(user);
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             logger.error("Error listing room members for room {}", roomId, e);
         }
         return users;
