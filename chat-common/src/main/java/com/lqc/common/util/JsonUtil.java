@@ -2,14 +2,31 @@ package com.lqc.common.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializer;
 import com.lqc.common.protocol.MessageType;
 import com.lqc.common.protocol.ProtocolMessage;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
 public final class JsonUtil {
     private static final Gson GSON = new GsonBuilder()
             .setDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+            .registerTypeAdapter(LocalDateTime.class,
+                    (JsonSerializer<LocalDateTime>) (src, type, ctx) ->
+                            new JsonPrimitive(src.toString()))
+            .registerTypeAdapter(LocalDateTime.class,
+                    (JsonDeserializer<LocalDateTime>) (json, type, ctx) -> {
+                        try {
+                            return LocalDateTime.parse(json.getAsString());
+                        } catch (DateTimeParseException e) {
+                            throw new JsonParseException("Cannot parse LocalDateTime: " + json, e);
+                        }
+                    })
             .create();
 
     private JsonUtil() {}
