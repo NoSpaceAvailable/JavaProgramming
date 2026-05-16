@@ -16,7 +16,7 @@ public class Message {
     private List<Reaction> reactions;
 
     public enum MessageType {
-        TEXT, FILE, SYSTEM
+        TEXT, FILE, SYSTEM, GIF
     }
 
     public Message() {}

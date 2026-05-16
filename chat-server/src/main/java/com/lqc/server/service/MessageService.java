@@ -21,13 +21,21 @@ public class MessageService {
     private final RoomRepository roomRepository = new RoomRepository();
 
     public Message sendRoomMessage(long roomId, long senderId, String senderName, String content) {
-        Message m = messageRepository.saveRoomMessage(roomId, senderId, senderName, content);
+        return sendRoomMessage(roomId, senderId, senderName, content, null);
+    }
+
+    public Message sendRoomMessage(long roomId, long senderId, String senderName, String content, String msgType) {
+        Message m = messageRepository.saveRoomMessage(roomId, senderId, senderName, content, msgType);
         broadcastRoomMessage(roomId, m);
         return m;
     }
 
     public Message sendPrivateMessage(long senderId, String senderName, long recipientId, String content) {
-        Message m = messageRepository.savePrivateMessage(senderId, senderName, recipientId, content);
+        return sendPrivateMessage(senderId, senderName, recipientId, content, null);
+    }
+
+    public Message sendPrivateMessage(long senderId, String senderName, long recipientId, String content, String msgType) {
+        Message m = messageRepository.savePrivateMessage(senderId, senderName, recipientId, content, msgType);
         deliverPrivateMessage(m, senderId, recipientId);
         return m;
     }

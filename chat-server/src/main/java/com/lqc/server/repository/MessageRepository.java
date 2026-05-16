@@ -77,16 +77,23 @@ public class MessageRepository {
     }
 
     public Message saveRoomMessage(long roomId, long senderId, String senderName, String content) {
+        return saveRoomMessage(roomId, senderId, senderName, content, null);
+    }
+
+    public Message saveRoomMessage(long roomId, long senderId, String senderName, String content, String msgType) {
+        String type = msgType != null ? msgType : "TEXT";
         String sql = "INSERT INTO messages (room_id, sender_id, content, message_type) " +
-                "VALUES (?, ?, ?, 'TEXT') RETURNING id, created_at";
+                "VALUES (?, ?, ?, ?) RETURNING id, created_at";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, roomId);
             stmt.setLong(2, senderId);
             stmt.setString(3, content);
+            stmt.setString(4, type);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 Message m = new Message(senderId, senderName, content);
+                m.setMessageType(Message.MessageType.valueOf(type));
                 m.setId(rs.getLong("id"));
                 m.setRoomId(roomId);
                 Timestamp t = rs.getTimestamp("created_at");
@@ -101,16 +108,23 @@ public class MessageRepository {
     }
 
     public Message savePrivateMessage(long senderId, String senderName, long recipientId, String content) {
+        return savePrivateMessage(senderId, senderName, recipientId, content, null);
+    }
+
+    public Message savePrivateMessage(long senderId, String senderName, long recipientId, String content, String msgType) {
+        String type = msgType != null ? msgType : "TEXT";
         String sql = "INSERT INTO messages (sender_id, recipient_id, content, message_type) " +
-                "VALUES (?, ?, ?, 'TEXT') RETURNING id, created_at";
+                "VALUES (?, ?, ?, ?) RETURNING id, created_at";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, senderId);
             stmt.setLong(2, recipientId);
             stmt.setString(3, content);
+            stmt.setString(4, type);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 Message m = new Message(senderId, senderName, content);
+                m.setMessageType(Message.MessageType.valueOf(type));
                 m.setId(rs.getLong("id"));
                 m.setRecipientId(recipientId);
                 Timestamp t = rs.getTimestamp("created_at");

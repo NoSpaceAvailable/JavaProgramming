@@ -96,6 +96,9 @@
                     <HBox spacing="8" alignment="CENTER">
                         <Button fx:id="attachButton" text="📎" styleClass="button-link"
                                 style="-fx-font-size: 18px;" onAction="#handleAttachFile" disable="true"/>
+                        <Button fx:id="gifButton" text="GIF" styleClass="button-link"
+                                style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #b9bbbe; -fx-border-color: #b9bbbe; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6;"
+                                onAction="#handleGifButton" disable="true"/>
                         <TextField fx:id="messageInput" styleClass="message-input" HBox.hgrow="ALWAYS"
                                    promptText="Send a message..." onAction="#handleSendMessage" disable="true"/>
                     </HBox>

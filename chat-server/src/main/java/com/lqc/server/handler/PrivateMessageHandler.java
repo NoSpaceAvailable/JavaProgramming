@@ -22,7 +22,8 @@ public class PrivateMessageHandler implements RequestHandler {
         PrivateMessageRequest req = JsonUtil.fromJson(message.getPayload(), PrivateMessageRequest.class);
 
         String content = req.getContent() == null ? "" : req.getContent().trim();
-        if (content.isEmpty()) {
+        boolean isGif = "GIF".equals(req.getMessageType());
+        if (content.isEmpty() && !isGif) {
             client.sendMessage(JsonUtil.wrap(MessageType.PRIVATE_MESSAGE_RESPONSE,
                     new SendMessageResponse(false, "Message cannot be empty", 0),
                     message.getRequestId()));
@@ -46,8 +47,9 @@ public class PrivateMessageHandler implements RequestHandler {
             return;
         }
 
+        String msgType = isGif ? "GIF" : null;
         Message saved = messageService.sendPrivateMessage(
-                user.getId(), user.getDisplayName(), req.getRecipientId(), content);
+                user.getId(), user.getDisplayName(), req.getRecipientId(), content, msgType);
         client.sendMessage(JsonUtil.wrap(MessageType.PRIVATE_MESSAGE_RESPONSE,
                 new SendMessageResponse(true, "OK", saved.getId()), message.getRequestId()));
     }

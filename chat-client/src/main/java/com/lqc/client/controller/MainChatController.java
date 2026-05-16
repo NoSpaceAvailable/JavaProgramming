@@ -1,5 +1,8 @@
 package com.lqc.client.controller;
 
+import com.lqc.client.gif.GifPicker;
+import com.lqc.client.gif.GifResult;
+import com.lqc.client.gif.GiphyService;
 import com.lqc.client.net.FileTransferClient;
 import com.lqc.client.net.MessageListener;
 import com.lqc.client.net.ServerConnection;
@@ -75,6 +78,7 @@ public class MainChatController implements MessageListener {
     @FXML private ScrollPane messagesScrollPane;
     @FXML private TextField messageInput;
     @FXML private Button attachButton;
+    @FXML private Button gifButton;
     @FXML private Label uploadStatusLabel;
     @FXML private ComboBox<UserStatus> statusCombo;
     @FXML private VBox dropOverlay;
@@ -85,6 +89,8 @@ public class MainChatController implements MessageListener {
     @FXML private Label headerStatusLabel;
 
     private final ServerConnection connection = ServerConnection.getInstance();
+    private static final String GIPHY_API_KEY = "PDHk52ymG4k6romXp7nSfhZlkJwA8Nwo";
+    private final GiphyService giphyService = new GiphyService(GIPHY_API_KEY);
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("MMM d, HH:mm");
 
@@ -363,6 +369,7 @@ public class MainChatController implements MessageListener {
             }
         }
         attachButton.setDisable(true);
+        gifButton.setDisable(true);
         showSystemPlaceholder("Select a room from the left or start a DM.");
         connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
         loadOwnAvatar();
@@ -455,6 +462,25 @@ public class MainChatController implements MessageListener {
     }
 
     @FXML
+    private void handleGifButton() {
+        if (active == null) return;
+        GifPicker picker = new GifPicker(giphyService);
+        picker.show(SceneManager.getPrimaryStage(), gif -> sendGifMessage(gif));
+    }
+
+    private void sendGifMessage(GifResult gif) {
+        if (active == null) return;
+        if (active.kind == Conversation.Kind.ROOM) {
+            connection.send(JsonUtil.wrap(MessageType.SEND_MESSAGE_REQUEST,
+                    new SendMessageRequest(active.id, gif.gifUrl(), "GIF")));
+        } else {
+            connection.send(JsonUtil.wrap(MessageType.PRIVATE_MESSAGE_REQUEST,
+                    new PrivateMessageRequest(active.id, gif.gifUrl(), "GIF")));
+        }
+        giphyService.registerOnSent(gif);
+    }
+
+    @FXML
     private void handleAttachFile() {
         if (active == null) return;
         FileChooser chooser = new FileChooser();
@@ -490,6 +516,7 @@ public class MainChatController implements MessageListener {
 
         showUploadStatus("Uploading " + file.getName() + "…");
         attachButton.setDisable(true);
+        gifButton.setDisable(true);
         FileTransferClient.getInstance().upload(path, roomId, recipientId, mime,
                 new FileTransferClient.UploadCallback() {
                     @Override
@@ -500,12 +527,12 @@ public class MainChatController implements MessageListener {
                     @Override
                     public void onComplete(long messageId, long attachmentId) {
                         hideUploadStatus();
-                        if (active != null) attachButton.setDisable(false);
+                        if (active != null) { attachButton.setDisable(false); gifButton.setDisable(false); }
                     }
                     @Override
                     public void onError(String msg) {
                         hideUploadStatus();
-                        if (active != null) attachButton.setDisable(false);
+                        if (active != null) { attachButton.setDisable(false); gifButton.setDisable(false); }
                         showAlert(Alert.AlertType.ERROR, "Upload failed: " + msg);
                     }
                 });
@@ -525,6 +552,7 @@ public class MainChatController implements MessageListener {
         connectionLabel.setStyle("-fx-text-fill: #f04747; -fx-font-size: 12px;");
         messageInput.setDisable(true);
         attachButton.setDisable(true);
+        gifButton.setDisable(true);
         statusCombo.setDisable(true);
     }
 
@@ -542,6 +570,7 @@ public class MainChatController implements MessageListener {
         members.clear();
         messageInput.setDisable(false);
         attachButton.setDisable(false);
+        gifButton.setDisable(false);
         messageInput.setPromptText("Message #" + room.getName());
         headerAvatarPane.setVisible(false);
         headerAvatarPane.setManaged(false);
@@ -564,6 +593,7 @@ public class MainChatController implements MessageListener {
         membersPanel.setManaged(false);
         messageInput.setDisable(false);
         attachButton.setDisable(false);
+        gifButton.setDisable(false);
         messageInput.setPromptText("Message @" + dm.displayName);
         updateDmHeader(dm.userId, dm.displayName);
         clearMessages();
@@ -690,6 +720,7 @@ public class MainChatController implements MessageListener {
             clearMessages();
             messageInput.setDisable(true);
             attachButton.setDisable(true);
+        gifButton.setDisable(true);
             members.clear();
         }
     }
@@ -1016,6 +1047,8 @@ public class MainChatController implements MessageListener {
                 a.setMimeType(n.getMimeType());
                 m.setAttachment(a);
             }
+        } else if ("GIF".equalsIgnoreCase(n.getMessageType())) {
+            m.setMessageType(Message.MessageType.GIF);
         } else {
             m.setMessageType(Message.MessageType.TEXT);
         }
@@ -1047,7 +1080,9 @@ public class MainChatController implements MessageListener {
         header.setAlignment(Pos.BASELINE_LEFT);
 
         Node body;
-        if (m.getAttachment() != null) {
+        if (m.getMessageType() == Message.MessageType.GIF && m.getContent() != null && !m.getContent().isBlank()) {
+            body = renderGifMessage(m.getContent());
+        } else if (m.getAttachment() != null) {
             body = renderAttachment(m.getAttachment());
         } else {
             Label text = new Label(m.getContent() == null ? "" : m.getContent());
@@ -1078,6 +1113,23 @@ public class MainChatController implements MessageListener {
             }
         });
         return bubble;
+    }
+
+    private Node renderGifMessage(String gifUrl) {
+        Image gif = new Image(gifUrl, 320, 0, true, true, true);
+        ImageView iv = new ImageView(gif);
+        iv.setFitWidth(320);
+        iv.setPreserveRatio(true);
+        iv.setSmooth(true);
+        iv.setStyle("-fx-cursor: hand;");
+        iv.setOnMouseClicked(e -> {
+            try { Desktop.getDesktop().browse(new java.net.URI(gifUrl)); } catch (Exception ignored) {}
+        });
+        VBox container = new VBox(4, iv);
+        Label poweredBy = new Label("via GIPHY");
+        poweredBy.setStyle("-fx-text-fill: #72767d; -fx-font-size: 10px;");
+        container.getChildren().add(poweredBy);
+        return container;
     }
 
     private Node renderAttachment(FileAttachment att) {

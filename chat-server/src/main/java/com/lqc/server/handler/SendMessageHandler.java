@@ -22,7 +22,8 @@ public class SendMessageHandler implements RequestHandler {
         SendMessageRequest req = JsonUtil.fromJson(message.getPayload(), SendMessageRequest.class);
 
         String content = req.getContent() == null ? "" : req.getContent().trim();
-        if (content.isEmpty()) {
+        boolean isGif = "GIF".equals(req.getMessageType());
+        if (content.isEmpty() && !isGif) {
             client.sendMessage(JsonUtil.wrap(MessageType.SEND_MESSAGE_RESPONSE,
                     new SendMessageResponse(false, "Message cannot be empty", 0),
                     message.getRequestId()));
@@ -40,8 +41,9 @@ public class SendMessageHandler implements RequestHandler {
             return;
         }
 
+        String msgType = isGif ? "GIF" : null;
         Message saved = messageService.sendRoomMessage(
-                req.getRoomId(), user.getId(), user.getDisplayName(), content);
+                req.getRoomId(), user.getId(), user.getDisplayName(), content, msgType);
         client.sendMessage(JsonUtil.wrap(MessageType.SEND_MESSAGE_RESPONSE,
                 new SendMessageResponse(true, "OK", saved.getId()), message.getRequestId()));
     }
