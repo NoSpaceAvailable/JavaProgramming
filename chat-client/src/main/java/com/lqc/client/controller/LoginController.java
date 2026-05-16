@@ -8,23 +8,53 @@ import com.lqc.common.protocol.ProtocolMessage;
 import com.lqc.common.protocol.request.LoginRequest;
 import com.lqc.common.protocol.response.LoginResponse;
 import com.lqc.common.util.JsonUtil;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+
+import java.util.Base64;
+import java.util.prefs.Preferences;
 
 public class LoginController implements MessageListener {
     @FXML private TextField usernameField;
     @FXML private PasswordField passwordField;
     @FXML private Label errorLabel;
     @FXML private Button loginButton;
+    @FXML private CheckBox rememberMeCheck;
+
+    private static final Preferences prefs = Preferences.userNodeForPackage(LoginController.class);
+    private static final String PREF_USERNAME = "saved_username";
+    private static final String PREF_PASSWORD = "saved_password";
+    private static final String PREF_REMEMBER = "remember_me";
 
     private final ServerConnection connection = ServerConnection.getInstance();
+    private boolean autoLoginAttempted;
+    private static boolean suppressAutoLogin;
 
     @FXML
     public void initialize() {
         connection.addListener(this);
+        boolean remembered = prefs.getBoolean(PREF_REMEMBER, false);
+        rememberMeCheck.setSelected(remembered);
+        if (remembered && !suppressAutoLogin) {
+            String savedUser = prefs.get(PREF_USERNAME, "");
+            String savedPass = decodePass(prefs.get(PREF_PASSWORD, ""));
+            if (!savedUser.isEmpty() && !savedPass.isEmpty()) {
+                usernameField.setText(savedUser);
+                passwordField.setText(savedPass);
+                Platform.runLater(this::autoLogin);
+            }
+        }
+    }
+
+    private void autoLogin() {
+        if (autoLoginAttempted) return;
+        autoLoginAttempted = true;
+        handleLogin();
     }
 
     @FXML
@@ -65,9 +95,11 @@ public class LoginController implements MessageListener {
         if (message.getType() == MessageType.LOGIN_RESPONSE) {
             LoginResponse response = JsonUtil.fromJson(message.getPayload(), LoginResponse.class);
             if (response.isSuccess()) {
+                saveOrClearCredentials();
                 connection.removeListener(this);
                 MainChatController controller = SceneManager.switchToAndGetController("main", 1200, 800);
-                controller.initWithUser(response.getUserId(), response.getDisplayName(), response.getRooms());
+                controller.initWithUser(response.getUserId(), response.getDisplayName(),
+                        response.getRooms(), response.getRecentDmPeers());
             } else {
                 showError(response.getMessage());
                 loginButton.setDisable(false);
@@ -76,6 +108,35 @@ public class LoginController implements MessageListener {
             showError("Server error — please try again");
             loginButton.setDisable(false);
         }
+    }
+
+    private void saveOrClearCredentials() {
+        if (rememberMeCheck.isSelected()) {
+            prefs.put(PREF_USERNAME, usernameField.getText().trim());
+            prefs.put(PREF_PASSWORD, encodePass(passwordField.getText()));
+            prefs.putBoolean(PREF_REMEMBER, true);
+        } else {
+            prefs.remove(PREF_USERNAME);
+            prefs.remove(PREF_PASSWORD);
+            prefs.putBoolean(PREF_REMEMBER, false);
+        }
+    }
+
+    private static String encodePass(String raw) {
+        return Base64.getEncoder().encodeToString(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static String decodePass(String encoded) {
+        if (encoded.isEmpty()) return "";
+        try {
+            return new String(Base64.getDecoder().decode(encoded), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static void disableAutoLogin() {
+        suppressAutoLogin = true;
     }
 
     private void showError(String msg) {

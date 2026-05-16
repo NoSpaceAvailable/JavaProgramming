@@ -83,6 +83,20 @@ public class UserRepository {
         }
     }
 
+    public boolean updateProfile(long userId, String displayName, String avatarUrl) {
+        String sql = "UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, displayName);
+            stmt.setString(2, avatarUrl);
+            stmt.setLong(3, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.error("Error updating profile for user {}", userId, e);
+            return false;
+        }
+    }
+
     public List<User> findAllExcept(long excludeUserId) {
         String sql = "SELECT id, username, password_hash, display_name, avatar_url, status, created_at, last_seen_at " +
                 "FROM users WHERE id <> ? ORDER BY display_name";
@@ -119,6 +133,34 @@ public class UserRepository {
             }
         } catch (Exception e) {
             logger.error("Error listing room members for room {}", roomId, e);
+        }
+        return users;
+    }
+
+    public List<User> findByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        StringBuilder sb = new StringBuilder(
+                "SELECT id, username, password_hash, display_name, avatar_url, status, created_at, last_seen_at " +
+                "FROM users WHERE id IN (");
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append('?');
+        }
+        sb.append(')');
+        List<User> users = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sb.toString())) {
+            for (int i = 0; i < ids.size(); i++) {
+                stmt.setLong(i + 1, ids.get(i));
+            }
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                User user = mapUser(rs);
+                user.setPasswordHash(null);
+                users.add(user);
+            }
+        } catch (Exception e) {
+            logger.error("Error finding users by ids", e);
         }
         return users;
     }

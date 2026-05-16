@@ -11,6 +11,7 @@ public class LoginResponse {
     private long userId;
     private String displayName;
     private List<Room> rooms;
+    private List<User> recentDmPeers;
 
     public LoginResponse() {}
 
@@ -40,4 +41,7 @@ public class LoginResponse {
 
     public List<Room> getRooms() { return rooms; }
     public void setRooms(List<Room> rooms) { this.rooms = rooms; }
+
+    public List<User> getRecentDmPeers() { return recentDmPeers; }
+    public void setRecentDmPeers(List<User> recentDmPeers) { this.recentDmPeers = recentDmPeers; }
 }

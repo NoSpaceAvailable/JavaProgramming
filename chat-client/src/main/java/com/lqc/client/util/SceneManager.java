@@ -37,10 +37,13 @@ public class SceneManager {
             }
             FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
             Parent root = loader.load();
-            Scene scene = new Scene(root, width, height);
+            Scene scene = new Scene(root);
             String cssPath = SceneManager.class.getResource("/css/dark-theme.css").toExternalForm();
             scene.getStylesheets().add(cssPath);
             primaryStage.setScene(scene);
+            primaryStage.setWidth(width);
+            primaryStage.setHeight(height);
+            primaryStage.centerOnScreen();
             logger.debug("Switched to scene: {}", sceneName);
         } catch (IOException e) {
             logger.error("Failed to load scene: {}", sceneName, e);
@@ -57,10 +60,13 @@ public class SceneManager {
             String fxmlPath = fxmlMap.get(sceneName);
             FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
             Parent root = loader.load();
-            Scene scene = new Scene(root, width, height);
+            Scene scene = new Scene(root);
             String cssPath = SceneManager.class.getResource("/css/dark-theme.css").toExternalForm();
             scene.getStylesheets().add(cssPath);
             primaryStage.setScene(scene);
+            primaryStage.setWidth(width);
+            primaryStage.setHeight(height);
+            primaryStage.centerOnScreen();
             return loader.getController();
         } catch (IOException e) {
             logger.error("Failed to load scene: {}", sceneName, e);

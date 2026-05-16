@@ -33,6 +33,10 @@ public enum MessageType {
     // Status
     STATUS_UPDATE_REQUEST, STATUS_UPDATE_RESPONSE,
 
+    // Profile
+    UPDATE_PROFILE_REQUEST, UPDATE_PROFILE_RESPONSE,
+    AVATAR_REQUEST, AVATAR_RESPONSE,
+
     // Notifications (server -> client)
     NEW_MESSAGE_NOTIFICATION,
     USER_JOINED_NOTIFICATION,

@@ -79,6 +79,35 @@ public class FileTransferClient implements MessageListener {
         connection.send(msg);
     }
 
+    private static final Path TEMP_CACHE;
+    static {
+        Path tmp;
+        try {
+            tmp = Path.of(System.getProperty("java.io.tmpdir"), "mini-discord-cache");
+            Files.createDirectories(tmp);
+        } catch (IOException e) {
+            tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        }
+        TEMP_CACHE = tmp;
+    }
+
+    public void downloadForPreview(long attachmentId, String fileName,
+                                    java.util.function.Consumer<Path> onComplete) {
+        ensureRegistered();
+        Path tempFile = TEMP_CACHE.resolve(attachmentId + "-" + fileName);
+        if (Files.exists(tempFile)) {
+            onComplete.accept(tempFile);
+            return;
+        }
+        download(attachmentId, fileName, tempFile, new DownloadCallback() {
+            @Override public void onProgress(long received, long total) {}
+            @Override public void onComplete(Path savedTo) { onComplete.accept(savedTo); }
+            @Override public void onError(String msg) {
+                logger.warn("Preview download failed for {}: {}", fileName, msg);
+            }
+        });
+    }
+
     public void download(long attachmentId, String fileName, Path savePath, DownloadCallback callback) {
         ensureRegistered();
         DownloadSession s = new DownloadSession(attachmentId, fileName, savePath, callback);

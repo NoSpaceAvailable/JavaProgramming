@@ -41,6 +41,9 @@ public class RequestDispatcher {
         handlers.put(MessageType.REMOVE_REACTION_REQUEST, new RemoveReactionHandler());
 
         handlers.put(MessageType.STATUS_UPDATE_REQUEST, new StatusUpdateHandler());
+
+        handlers.put(MessageType.UPDATE_PROFILE_REQUEST, new UpdateProfileHandler());
+        handlers.put(MessageType.AVATAR_REQUEST, new AvatarHandler());
     }
 
     public static void dispatch(ClientHandler client, ProtocolMessage message) {

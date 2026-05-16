@@ -242,6 +242,28 @@
     -fx-border-color: #40444b;
 }
 
+/* === Media Preview === */
+.media-container {
+    -fx-background-color: #2f3136;
+    -fx-background-radius: 8;
+    -fx-padding: 6;
+}
+
+.media-container .image-view {
+    -fx-cursor: hand;
+}
+
+.video-placeholder {
+    -fx-background-color: #202225;
+    -fx-background-radius: 8;
+    -fx-padding: 16 24;
+    -fx-cursor: hand;
+}
+
+.video-placeholder:hover {
+    -fx-background-color: #292b2f;
+}
+
 /* === Tooltip === */
 .tooltip {
     -fx-background-color: #18191c;

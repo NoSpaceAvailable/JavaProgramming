@@ -28,6 +28,9 @@
 
         <Region prefHeight="4"/>
 
+        <CheckBox fx:id="rememberMeCheck" text="Remember me"
+                  style="-fx-text-fill: #b9bbbe; -fx-font-size: 13px;"/>
+
         <Label fx:id="errorLabel" styleClass="label-error" wrapText="true" maxWidth="Infinity" visible="false"
                managed="false"/>
 

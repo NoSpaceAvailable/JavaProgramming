@@ -11,20 +11,26 @@ import com.lqc.common.protocol.response.LoginResponse;
 import com.lqc.common.util.JsonUtil;
 import com.lqc.server.ClientHandler;
 import com.lqc.server.manager.SessionManager;
+import com.lqc.server.repository.MessageRepository;
 import com.lqc.server.repository.RoomRepository;
 import com.lqc.server.repository.UserRepository;
 import com.lqc.server.service.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class LoginHandler implements RequestHandler {
     private static final Logger logger = LoggerFactory.getLogger(LoginHandler.class);
     private final AuthService authService = new AuthService();
     private final UserRepository userRepository = new UserRepository();
     private final RoomRepository roomRepository = new RoomRepository();
+    private final MessageRepository messageRepository = new MessageRepository();
 
     @Override
     public void handle(ClientHandler client, ProtocolMessage message) {
@@ -53,7 +59,18 @@ public class LoginHandler implements RequestHandler {
 
         List<Room> rooms = roomRepository.findRoomsByUserId(user.getId());
 
+        List<long[]> peerIdPairs = messageRepository.getRecentDmPeerIds(user.getId());
+        List<Long> peerIds = peerIdPairs.stream().map(a -> a[0]).toList();
+        Map<Long, User> peerMap = userRepository.findByIds(peerIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        List<User> orderedPeers = new ArrayList<>();
+        for (Long pid : peerIds) {
+            User p = peerMap.get(pid);
+            if (p != null) orderedPeers.add(p);
+        }
+
         LoginResponse response = new LoginResponse(true, user.getId(), user.getDisplayName(), rooms);
+        response.setRecentDmPeers(orderedPeers);
         client.sendMessage(JsonUtil.wrap(MessageType.LOGIN_RESPONSE, response, message.getRequestId()));
 
         // Broadcast online status to other users

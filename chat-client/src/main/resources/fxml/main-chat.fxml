@@ -11,8 +11,14 @@
     <!-- Left sidebar: rooms + DMs -->
     <left>
         <VBox styleClass="sidebar" prefWidth="240">
-            <HBox styleClass="sidebar-header" alignment="CENTER_LEFT">
-                <Label fx:id="userBadge" text="@user" styleClass="label-title" style="-fx-font-size: 14px;"/>
+            <HBox styleClass="sidebar-header" alignment="CENTER_LEFT" spacing="8">
+                <StackPane fx:id="avatarPane" prefWidth="32" prefHeight="32" minWidth="32" minHeight="32"
+                           style="-fx-background-color: #7289da; -fx-background-radius: 16; -fx-cursor: hand;">
+                    <Label fx:id="avatarInitial" text="U"
+                           style="-fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-font-weight: bold;"/>
+                </StackPane>
+                <Label fx:id="userBadge" text="@user" styleClass="label-title"
+                       style="-fx-font-size: 14px; -fx-cursor: hand;"/>
                 <Region HBox.hgrow="ALWAYS"/>
             </HBox>
 
@@ -51,21 +57,38 @@
     <center>
         <BorderPane styleClass="chat-area">
             <top>
-                <HBox styleClass="chat-header" alignment="CENTER_LEFT" spacing="12">
+                <HBox styleClass="chat-header" alignment="CENTER_LEFT" spacing="8">
+                    <StackPane fx:id="headerAvatarPane" prefWidth="28" prefHeight="28" minWidth="28" minHeight="28"
+                               visible="false" managed="false"
+                               style="-fx-background-color: #7289da; -fx-background-radius: 14;">
+                        <Label fx:id="headerAvatarInitial" text=""
+                               style="-fx-text-fill: #ffffff; -fx-font-size: 12px; -fx-font-weight: bold;"/>
+                    </StackPane>
                     <Label fx:id="conversationTitle" text="Select a room or DM" styleClass="label-title"
                            style="-fx-font-size: 16px;"/>
+                    <Label fx:id="headerStatusLabel" text="" style="-fx-font-size: 12px;"
+                           visible="false" managed="false"/>
                     <Region HBox.hgrow="ALWAYS"/>
                     <Button fx:id="leaveButton" text="Leave Room" styleClass="button-link"
                             onAction="#handleLeaveRoom" visible="false" managed="false"/>
                 </HBox>
             </top>
             <center>
-                <ScrollPane fx:id="messagesScrollPane" fitToWidth="true"
-                            style="-fx-background: #36393f; -fx-background-color: transparent;">
-                    <content>
-                        <VBox fx:id="messagesBox" spacing="2" style="-fx-padding: 16 0 16 0;"/>
-                    </content>
-                </ScrollPane>
+                <StackPane>
+                    <ScrollPane fx:id="messagesScrollPane" fitToWidth="true"
+                                style="-fx-background: #36393f; -fx-background-color: transparent;">
+                        <content>
+                            <VBox fx:id="messagesBox" spacing="2" style="-fx-padding: 16 0 16 0;"/>
+                        </content>
+                    </ScrollPane>
+                    <VBox fx:id="dropOverlay" visible="false" managed="false" alignment="CENTER"
+                          mouseTransparent="true"
+                          style="-fx-background-color: rgba(114,137,218,0.12); -fx-border-color: #7289da; -fx-border-width: 3; -fx-border-style: dashed; -fx-border-radius: 12; -fx-background-radius: 12;">
+                        <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+                        <Label text="Drop files here to upload"
+                               style="-fx-text-fill: #7289da; -fx-font-size: 20px; -fx-font-weight: bold;"/>
+                    </VBox>
+                </StackPane>
             </center>
             <bottom>
                 <VBox styleClass="message-input-bar">

@@ -27,13 +27,23 @@ import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.input.DragEvent;
+import javafx.scene.input.Dragboard;
 import javafx.scene.input.MouseButton;
+import javafx.scene.input.TransferMode;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 
+import java.awt.Desktop;
+import java.io.File;
 import java.io.IOException;
 import java.net.URLConnection;
 import java.nio.file.Files;
@@ -67,6 +77,12 @@ public class MainChatController implements MessageListener {
     @FXML private Button attachButton;
     @FXML private Label uploadStatusLabel;
     @FXML private ComboBox<UserStatus> statusCombo;
+    @FXML private VBox dropOverlay;
+    @FXML private StackPane avatarPane;
+    @FXML private Label avatarInitial;
+    @FXML private StackPane headerAvatarPane;
+    @FXML private Label headerAvatarInitial;
+    @FXML private Label headerStatusLabel;
 
     private final ServerConnection connection = ServerConnection.getInstance();
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
@@ -90,9 +106,40 @@ public class MainChatController implements MessageListener {
     private boolean suppressStatusEvents;
 
     private static final List<String> EMOJI_PALETTE = List.of(
-            "👍", "❤", "😂", "🎉", "😮", "😢", "🔥", "👀");
+            "👍", "❤️", "😂", "🎉", "😀",
+            "😮", "😢", "🔥", "👀", "💩");
+
+    private static final Map<String, String> EMOJI_IMAGES = Map.ofEntries(
+            Map.entry("👍", "/emojis/thumbs_up_3d_default.png"),
+            Map.entry("❤️", "/emojis/red_heart_3d.png"),
+            Map.entry("😂", "/emojis/face_with_tears_of_joy_3d.png"),
+            Map.entry("🎉", "/emojis/party_popper_3d.png"),
+            Map.entry("😀", "/emojis/grinning_face_3d.png"),
+            Map.entry("😮", "/emojis/shaking_face_3d.png"),
+            Map.entry("😢", "/emojis/crying_face_3d.png"),
+            Map.entry("🔥", "/emojis/fire_3d.png"),
+            Map.entry("👀", "/emojis/eyes_3d.png"),
+            Map.entry("💩", "/emojis/pile_of_poo_3d.png")
+    );
+    private static final Map<String, Image> EMOJI_IMAGE_CACHE = new HashMap<>();
+
+    private static ImageView emojiImageView(String emoji, double size) {
+        String path = EMOJI_IMAGES.get(emoji);
+        if (path == null) return null;
+        Image img = EMOJI_IMAGE_CACHE.computeIfAbsent(emoji, k ->
+                new Image(MainChatController.class.getResourceAsStream(path)));
+        ImageView iv = new ImageView(img);
+        iv.setFitWidth(size);
+        iv.setFitHeight(size);
+        iv.setPreserveRatio(true);
+        return iv;
+    }
 
     private Conversation active;
+    private javafx.stage.Popup emojiPopup;
+    private Image cachedAvatar;
+    private final Map<Long, Image> userAvatarCache = new HashMap<>();
+    private final java.util.Set<Long> avatarRequested = new java.util.HashSet<>();
 
     private final Runnable disconnectHandler = this::onServerDisconnected;
 
@@ -132,15 +179,30 @@ public class MainChatController implements MessageListener {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
                     setStyle("");
                     return;
                 }
-                String dot = statusDot(userStatuses.get(item.userId));
+                UserStatus st = userStatuses.get(item.userId);
+                StackPane avatar = createAvatarNode(item.userId, item.displayName, 28);
+                StackPane avatarWithStatus = new StackPane(avatar);
+                avatarWithStatus.setPrefSize(32, 32);
+                Circle dot = statusCircle(st, 5);
+                StackPane.setAlignment(dot, Pos.BOTTOM_RIGHT);
+                avatarWithStatus.getChildren().add(dot);
+
                 int unread = dmUnread.getOrDefault(item.userId, 0);
-                String label = dot + " @" + item.displayName;
-                if (unread > 0) label = label + "  (" + unread + ")";
-                setText(label);
-                setStyle(unread > 0 ? "-fx-font-weight: bold; -fx-text-fill: #ffffff;" : "");
+                String name = "@" + item.displayName;
+                if (unread > 0) name += "  (" + unread + ")";
+                Label nameLabel = new Label(name);
+                nameLabel.setStyle(unread > 0
+                        ? "-fx-font-weight: bold; -fx-text-fill: #ffffff; -fx-font-size: 13px;"
+                        : "-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                HBox cell = new HBox(8, avatarWithStatus, nameLabel);
+                cell.setAlignment(Pos.CENTER_LEFT);
+                setText(null);
+                setGraphic(cell);
+                setStyle("");
             }
         });
         dmListView.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
@@ -157,10 +219,26 @@ public class MainChatController implements MessageListener {
                 super.updateItem(user, empty);
                 if (empty || user == null) {
                     setText(null);
+                    setGraphic(null);
                     return;
                 }
                 UserStatus liveStatus = userStatuses.getOrDefault(user.getId(), user.getStatus());
-                setText(statusDot(liveStatus) + " " + user.getDisplayName());
+                StackPane avatar = createAvatarNode(user.getId(), user.getDisplayName(), 28);
+                StackPane avatarWithStatus = new StackPane(avatar);
+                avatarWithStatus.setPrefSize(32, 32);
+                Circle dot = statusCircle(liveStatus, 5);
+                StackPane.setAlignment(dot, Pos.BOTTOM_RIGHT);
+                avatarWithStatus.getChildren().add(dot);
+
+                Label nameLabel = new Label(user.getDisplayName());
+                nameLabel.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                Label statusLabel = new Label(statusText(liveStatus));
+                statusLabel.setStyle("-fx-text-fill: #72767d; -fx-font-size: 11px;");
+                VBox info = new VBox(0, nameLabel, statusLabel);
+                HBox cell = new HBox(8, avatarWithStatus, info);
+                cell.setAlignment(Pos.CENTER_LEFT);
+                setText(null);
+                setGraphic(cell);
             }
         });
         memberListView.setOnMouseClicked(e -> {
@@ -177,6 +255,40 @@ public class MainChatController implements MessageListener {
             connection.send(JsonUtil.wrap(MessageType.STATUS_UPDATE_REQUEST,
                     new StatusUpdateRequest(newV)));
         });
+
+        messagesScrollPane.setOnDragOver(this::onDragOver);
+        messagesScrollPane.setOnDragDropped(this::onDragDropped);
+        messagesScrollPane.setOnDragExited(e -> showDropOverlay(false));
+
+        avatarPane.setOnMouseClicked(e -> showProfileDialog());
+        userBadge.setOnMouseClicked(e -> showProfileDialog());
+    }
+
+    private void onDragOver(DragEvent event) {
+        if (active != null && event.getDragboard().hasFiles()) {
+            event.acceptTransferModes(TransferMode.COPY);
+            showDropOverlay(true);
+        }
+        event.consume();
+    }
+
+    private void onDragDropped(DragEvent event) {
+        showDropOverlay(false);
+        Dragboard db = event.getDragboard();
+        if (active != null && db.hasFiles()) {
+            for (File file : db.getFiles()) {
+                uploadFile(file);
+            }
+            event.setDropCompleted(true);
+        } else {
+            event.setDropCompleted(false);
+        }
+        event.consume();
+    }
+
+    private void showDropOverlay(boolean show) {
+        dropOverlay.setVisible(show);
+        dropOverlay.setManaged(show);
     }
 
     private static String statusDot(UserStatus status) {
@@ -188,15 +300,82 @@ public class MainChatController implements MessageListener {
         };
     }
 
-    public void initWithUser(long userId, String displayName, List<Room> initialRooms) {
+    private static Circle statusCircle(UserStatus status, double radius) {
+        Color color = switch (status != null ? status : UserStatus.OFFLINE) {
+            case ONLINE -> Color.web("#43b581");
+            case AWAY -> Color.web("#faa61a");
+            case OFFLINE -> Color.web("#747f8d");
+        };
+        Circle c = new Circle(radius, color);
+        c.setStroke(Color.web("#2f3136"));
+        c.setStrokeWidth(1.5);
+        return c;
+    }
+
+    private static String statusText(UserStatus status) {
+        if (status == null) return "Offline";
+        return switch (status) {
+            case ONLINE -> "Online";
+            case AWAY -> "Away";
+            case OFFLINE -> "Offline";
+        };
+    }
+
+    private void requestAvatarIfNeeded(long userId) {
+        if (userAvatarCache.containsKey(userId) || !avatarRequested.add(userId)) return;
+        connection.send(JsonUtil.wrap(MessageType.AVATAR_REQUEST,
+                new com.lqc.common.protocol.request.AvatarRequest(userId)));
+    }
+
+    private StackPane createAvatarNode(long userId, String displayName, double size) {
+        StackPane pane = new StackPane();
+        pane.setPrefSize(size, size);
+        pane.setMinSize(size, size);
+        pane.setMaxSize(size, size);
+        double radius = size / 2;
+        pane.setStyle("-fx-background-color: #7289da; -fx-background-radius: " + radius + ";");
+
+        Image avatar = userAvatarCache.get(userId);
+        if (avatar != null) {
+            applyAvatarToPane(pane, avatar, size);
+        } else {
+            String initial = (displayName != null && !displayName.isEmpty())
+                    ? String.valueOf(Character.toUpperCase(displayName.charAt(0))) : "?";
+            Label lbl = new Label(initial);
+            lbl.setStyle("-fx-text-fill: #ffffff; -fx-font-size: " + (size * 0.45) + "px; -fx-font-weight: bold;");
+            pane.getChildren().add(lbl);
+            requestAvatarIfNeeded(userId);
+        }
+        return pane;
+    }
+
+    public void initWithUser(long userId, String displayName, List<Room> initialRooms, List<User> recentDmPeers) {
         this.currentUserId = userId;
         this.currentDisplayName = displayName;
         userBadge.setText("@" + displayName);
+        updateAvatarInitial(displayName);
         if (initialRooms != null) rooms.setAll(initialRooms);
+        if (recentDmPeers != null) {
+            for (User peer : recentDmPeers) {
+                dms.add(new DmEntry(peer.getId(), peer.getDisplayName()));
+                knownUsers.put(peer.getId(), peer);
+                if (peer.getStatus() != null) userStatuses.put(peer.getId(), peer.getStatus());
+            }
+        }
         attachButton.setDisable(true);
         showSystemPlaceholder("Select a room from the left or start a DM.");
-        // Also fetch the user list eagerly so the DM picker has data ready.
         connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
+        loadOwnAvatar();
+    }
+
+    private void updateAvatarInitial(String name) {
+        avatarInitial.setText(name != null && !name.isEmpty()
+                ? String.valueOf(Character.toUpperCase(name.charAt(0))) : "?");
+    }
+
+    private void loadOwnAvatar() {
+        connection.send(JsonUtil.wrap(MessageType.AVATAR_REQUEST,
+                new com.lqc.common.protocol.request.AvatarRequest(currentUserId)));
     }
 
     // ---- UI handlers ----
@@ -280,9 +459,12 @@ public class MainChatController implements MessageListener {
         if (active == null) return;
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Send file");
-        java.io.File file = chooser.showOpenDialog(SceneManager.getPrimaryStage());
-        if (file == null) return;
+        File file = chooser.showOpenDialog(SceneManager.getPrimaryStage());
+        if (file != null) uploadFile(file);
+    }
 
+    private void uploadFile(File file) {
+        if (active == null) return;
         Path path = file.toPath();
         long size;
         try {
@@ -334,6 +516,7 @@ public class MainChatController implements MessageListener {
         connection.removeListener(this);
         connection.removeDisconnectListener(disconnectHandler);
         connection.disconnect();
+        LoginController.disableAutoLogin();
         SceneManager.switchTo("login");
     }
 
@@ -360,6 +543,10 @@ public class MainChatController implements MessageListener {
         messageInput.setDisable(false);
         attachButton.setDisable(false);
         messageInput.setPromptText("Message #" + room.getName());
+        headerAvatarPane.setVisible(false);
+        headerAvatarPane.setManaged(false);
+        headerStatusLabel.setVisible(false);
+        headerStatusLabel.setManaged(false);
         clearMessages();
         connection.send(JsonUtil.wrap(MessageType.GET_HISTORY_REQUEST,
                 new GetHistoryRequest(room.getId(), 0, 50)));
@@ -378,9 +565,39 @@ public class MainChatController implements MessageListener {
         messageInput.setDisable(false);
         attachButton.setDisable(false);
         messageInput.setPromptText("Message @" + dm.displayName);
+        updateDmHeader(dm.userId, dm.displayName);
         clearMessages();
         connection.send(JsonUtil.wrap(MessageType.DM_HISTORY_REQUEST,
                 new DmHistoryRequest(dm.userId, 0, 50)));
+    }
+
+    private void updateDmHeader(long peerId, String displayName) {
+        headerAvatarPane.setVisible(true);
+        headerAvatarPane.setManaged(true);
+        Image peerAvatar = userAvatarCache.get(peerId);
+        if (peerAvatar != null) {
+            applyAvatarToPane(headerAvatarPane, peerAvatar, 28);
+        } else {
+            String initial = (displayName != null && !displayName.isEmpty())
+                    ? String.valueOf(Character.toUpperCase(displayName.charAt(0))) : "?";
+            headerAvatarInitial.setText(initial);
+            headerAvatarPane.getChildren().setAll(headerAvatarInitial);
+            requestAvatarIfNeeded(peerId);
+        }
+        UserStatus st = userStatuses.get(peerId);
+        headerStatusLabel.setText(statusText(st));
+        Color stColor = switch (st != null ? st : UserStatus.OFFLINE) {
+            case ONLINE -> Color.web("#43b581");
+            case AWAY -> Color.web("#faa61a");
+            case OFFLINE -> Color.web("#747f8d");
+        };
+        headerStatusLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: " + toHex(stColor) + ";");
+        headerStatusLabel.setVisible(true);
+        headerStatusLabel.setManaged(true);
+    }
+
+    private static String toHex(Color c) {
+        return String.format("#%02x%02x%02x", (int)(c.getRed()*255), (int)(c.getGreen()*255), (int)(c.getBlue()*255));
     }
 
     private void clearMessages() {
@@ -421,6 +638,8 @@ public class MainChatController implements MessageListener {
             case STATUS_UPDATE_RESPONSE -> onStatusUpdateResponse(message);
             case USER_JOINED_NOTIFICATION -> onUserJoined(message);
             case USER_LEFT_NOTIFICATION -> onUserLeft(message);
+            case UPDATE_PROFILE_RESPONSE -> onUpdateProfileResponse(message);
+            case AVATAR_RESPONSE -> onAvatarResponse(message);
             case ERROR_RESPONSE -> onError(message);
             case SEND_MESSAGE_RESPONSE, PRIVATE_MESSAGE_RESPONSE -> {
                 SendMessageResponse r = JsonUtil.fromJson(message.getPayload(), SendMessageResponse.class);
@@ -607,6 +826,9 @@ public class MainChatController implements MessageListener {
         if (cached != null) cached.setStatus(n.getStatus());
         dmListView.refresh();
         memberListView.refresh();
+        if (active != null && active.kind == Conversation.Kind.DM && active.id == n.getUserId()) {
+            updateDmHeader(n.getUserId(), active.title);
+        }
     }
 
     private void onStatusUpdateResponse(ProtocolMessage m) {
@@ -625,9 +847,152 @@ public class MainChatController implements MessageListener {
         bubble.applyReaction(n);
     }
 
+    private void onUpdateProfileResponse(ProtocolMessage m) {
+        UpdateProfileResponse r = JsonUtil.fromJson(m.getPayload(), UpdateProfileResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        currentDisplayName = r.getDisplayName();
+        userBadge.setText("@" + currentDisplayName);
+        updateAvatarInitial(currentDisplayName);
+        if (r.getAvatarUrl() != null) loadOwnAvatar();
+        showAlert(Alert.AlertType.INFORMATION, "Profile updated!");
+    }
+
+    private void onAvatarResponse(ProtocolMessage m) {
+        AvatarResponse r = JsonUtil.fromJson(m.getPayload(), AvatarResponse.class);
+        if (r.getAvatarData() == null) return;
+        try {
+            byte[] data = java.util.Base64.getDecoder().decode(r.getAvatarData());
+            Image img = new Image(new java.io.ByteArrayInputStream(data));
+            userAvatarCache.put(r.getUserId(), img);
+            if (r.getUserId() == currentUserId) {
+                cachedAvatar = img;
+                applyAvatarToPane(avatarPane, img, 32);
+            }
+            if (active != null && active.kind == Conversation.Kind.DM && active.id == r.getUserId()) {
+                applyAvatarToPane(headerAvatarPane, img, 28);
+            }
+            memberListView.refresh();
+            dmListView.refresh();
+        } catch (Exception ignored) {}
+    }
+
+    private void applyAvatarToPane(StackPane pane, Image img, double size) {
+        ImageView iv = new ImageView(img);
+        iv.setFitWidth(size);
+        iv.setFitHeight(size);
+        iv.setPreserveRatio(true);
+        iv.setSmooth(true);
+        javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(size / 2, size / 2, size / 2);
+        iv.setClip(clip);
+        pane.getChildren().setAll(iv);
+    }
+
     private void onError(ProtocolMessage m) {
         ErrorResponse r = JsonUtil.fromJson(m.getPayload(), ErrorResponse.class);
         showAlert(Alert.AlertType.ERROR, r.getMessage());
+    }
+
+    // ---- Profile ----
+
+    private void showProfileDialog() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Edit Profile");
+        dialog.setHeaderText(null);
+
+        DialogPane pane = dialog.getDialogPane();
+        pane.setStyle("-fx-background-color: #36393f;");
+        pane.getButtonTypes().addAll(ButtonType.APPLY, ButtonType.CANCEL);
+
+        VBox content = new VBox(12);
+        content.setStyle("-fx-padding: 20;");
+
+        StackPane avatarPreview = new StackPane();
+        avatarPreview.setPrefSize(80, 80);
+        avatarPreview.setMinSize(80, 80);
+        avatarPreview.setMaxSize(80, 80);
+        avatarPreview.setStyle("-fx-background-color: #7289da; -fx-background-radius: 40; -fx-cursor: hand;");
+        if (cachedAvatar != null) {
+            applyAvatarToPane(avatarPreview, cachedAvatar, 80);
+        } else {
+            Label avatarLetter = new Label(avatarInitial.getText());
+            avatarLetter.setStyle("-fx-text-fill: #ffffff; -fx-font-size: 32px; -fx-font-weight: bold;");
+            avatarPreview.getChildren().add(avatarLetter);
+        }
+
+        Label changeAvatarLabel = new Label("Click to change avatar");
+        changeAvatarLabel.setStyle("-fx-text-fill: #7289da; -fx-font-size: 12px; -fx-cursor: hand;");
+
+        final File[] selectedAvatar = {null};
+        javafx.event.EventHandler<javafx.scene.input.MouseEvent> pickAvatar = e -> {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Choose avatar");
+            chooser.getExtensionFilters().add(
+                    new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"));
+            File file = chooser.showOpenDialog(dialog.getOwner());
+            if (file != null && file.length() <= 3 * 1024 * 1024) {
+                selectedAvatar[0] = file;
+                try {
+                    Image preview = new Image(file.toURI().toString(), 80, 80, true, true);
+                    ImageView iv = new ImageView(preview);
+                    iv.setFitWidth(80);
+                    iv.setFitHeight(80);
+                    iv.setPreserveRatio(true);
+                    javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(40, 40, 40);
+                    iv.setClip(clip);
+                    avatarPreview.getChildren().setAll(iv);
+                } catch (Exception ignored) {}
+                changeAvatarLabel.setText(file.getName());
+            } else if (file != null) {
+                showAlert(Alert.AlertType.ERROR, "Avatar must be under 3 MB.");
+            }
+        };
+        avatarPreview.setOnMouseClicked(pickAvatar);
+        changeAvatarLabel.setOnMouseClicked(pickAvatar);
+
+        VBox avatarSection = new VBox(6, avatarPreview, changeAvatarLabel);
+        avatarSection.setAlignment(Pos.CENTER);
+
+        Label nameLabel = new Label("DISPLAY NAME");
+        nameLabel.setStyle("-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;");
+        TextField nameField = new TextField(currentDisplayName);
+        nameField.setStyle("-fx-background-color: #202225; -fx-text-fill: #dcddde; " +
+                "-fx-background-radius: 4; -fx-padding: 8 12;");
+
+        Label usernameLabel = new Label("USERNAME");
+        usernameLabel.setStyle("-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;");
+        Label usernameValue = new Label("@" + (knownUsers.containsKey(currentUserId)
+                ? knownUsers.get(currentUserId).getUsername() : currentDisplayName));
+        usernameValue.setStyle("-fx-text-fill: #72767d; -fx-font-size: 14px;");
+
+        content.getChildren().addAll(avatarSection, nameLabel, nameField, usernameLabel, usernameValue);
+        pane.setContent(content);
+
+        pane.lookupButton(ButtonType.APPLY).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume();
+            String newName = nameField.getText().trim();
+            if (newName.isEmpty()) {
+                showAlert(Alert.AlertType.ERROR, "Display name cannot be empty.");
+                return;
+            }
+            com.lqc.common.protocol.request.UpdateProfileRequest req =
+                    new com.lqc.common.protocol.request.UpdateProfileRequest();
+            req.setDisplayName(newName);
+            if (selectedAvatar[0] != null) {
+                try {
+                    byte[] data = Files.readAllBytes(selectedAvatar[0].toPath());
+                    req.setAvatarData(java.util.Base64.getEncoder().encodeToString(data));
+                    String mime = Files.probeContentType(selectedAvatar[0].toPath());
+                    req.setAvatarMimeType(mime != null ? mime : "image/png");
+                } catch (IOException ignored) {}
+            }
+            connection.send(JsonUtil.wrap(MessageType.UPDATE_PROFILE_REQUEST, req));
+            dialog.close();
+        });
+
+        dialog.showAndWait();
     }
 
     // ---- Rendering helpers ----
@@ -667,7 +1032,10 @@ public class MainChatController implements MessageListener {
                 ? m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 : System.currentTimeMillis();
 
-        Label nameLabel = new Label(m.getSenderName() == null ? "Unknown" : m.getSenderName());
+        String senderName = m.getSenderName() == null ? "Unknown" : m.getSenderName();
+        StackPane msgAvatar = createAvatarNode(m.getSenderId(), senderName, 36);
+
+        Label nameLabel = new Label(senderName);
         nameLabel.getStyleClass().add("sender-name");
         nameLabel.setStyle(m.getSenderId() == currentUserId
                 ? "-fx-text-fill: #7289da;"
@@ -693,8 +1061,13 @@ public class MainChatController implements MessageListener {
         reactionRow.setVisible(false);
         reactionRow.setManaged(false);
 
-        VBox container = new VBox(2, header, body, reactionRow);
-        container.getStyleClass().add("message-bubble");
+        VBox contentColumn = new VBox(2, header, body, reactionRow);
+        contentColumn.getStyleClass().add("message-bubble");
+        HBox.setHgrow(contentColumn, javafx.scene.layout.Priority.ALWAYS);
+
+        HBox container = new HBox(10, msgAvatar, contentColumn);
+        container.setAlignment(Pos.TOP_LEFT);
+        container.setStyle("-fx-padding: 4 16 4 16;");
 
         MessageBubble bubble = new MessageBubble(container, reactionRow, m.getId());
         bubble.replaceReactions(m.getReactions());
@@ -708,6 +1081,86 @@ public class MainChatController implements MessageListener {
     }
 
     private Node renderAttachment(FileAttachment att) {
+        String mime = att.getMimeType();
+        if (mime != null && mime.startsWith("image/")) return renderImageAttachment(att);
+        if (mime != null && mime.startsWith("video/")) return renderVideoAttachment(att);
+        return renderGenericAttachment(att);
+    }
+
+    private Node renderImageAttachment(FileAttachment att) {
+        VBox container = new VBox(4);
+        container.getStyleClass().addAll("message-content", "media-container");
+
+        ImageView imageView = new ImageView();
+        imageView.setPreserveRatio(true);
+        imageView.setFitWidth(360);
+        imageView.setSmooth(true);
+        imageView.setCursor(javafx.scene.Cursor.HAND);
+        imageView.setOnMouseClicked(e -> {
+            if (e.getButton() == MouseButton.PRIMARY) openFileExternally(att);
+        });
+
+        StackPane imageHolder = new StackPane();
+        Label loading = new Label("Loading image…");
+        loading.setStyle("-fx-text-fill: #72767d; -fx-font-style: italic;");
+        imageHolder.getChildren().add(loading);
+        imageHolder.setMinHeight(60);
+        imageHolder.setAlignment(Pos.CENTER_LEFT);
+
+        FileTransferClient.getInstance().downloadForPreview(att.getId(), att.getFileName(), path -> {
+            Image image = new Image(path.toUri().toString(), 360, 0, true, true, true);
+            imageView.setImage(image);
+            imageHolder.getChildren().setAll(imageView);
+        });
+
+        HBox info = new HBox(8);
+        info.setAlignment(Pos.CENTER_LEFT);
+        Label nameLabel = new Label(att.getFileName() + " (" + formatBytes(att.getFileSize()) + ")");
+        nameLabel.setStyle("-fx-text-fill: #72767d; -fx-font-size: 11px;");
+        Button save = new Button("Save");
+        save.getStyleClass().add("button-link");
+        save.setStyle("-fx-font-size: 11px;");
+        save.setOnAction(e -> startDownload(att));
+        info.getChildren().addAll(nameLabel, save);
+
+        container.getChildren().addAll(imageHolder, info);
+        return container;
+    }
+
+    private Node renderVideoAttachment(FileAttachment att) {
+        VBox container = new VBox(4);
+        container.getStyleClass().addAll("message-content", "media-container");
+
+        HBox preview = new HBox(12);
+        preview.getStyleClass().add("video-placeholder");
+        preview.setAlignment(Pos.CENTER_LEFT);
+        preview.setOnMouseClicked(e -> {
+            if (e.getButton() == MouseButton.PRIMARY) openFileExternally(att);
+        });
+
+        Label icon = new Label("🎬");
+        icon.setStyle("-fx-font-size: 28px;");
+        VBox details = new VBox(2);
+        Label name = new Label(att.getFileName());
+        name.setStyle("-fx-text-fill: #00b0f4; -fx-font-weight: bold; -fx-font-size: 14px;");
+        Label size = new Label(formatBytes(att.getFileSize()) + " — Click to play");
+        size.setStyle("-fx-text-fill: #72767d; -fx-font-size: 12px;");
+        details.getChildren().addAll(name, size);
+        preview.getChildren().addAll(icon, details);
+
+        HBox actions = new HBox(8);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        Button save = new Button("Save");
+        save.getStyleClass().add("button-link");
+        save.setStyle("-fx-font-size: 11px;");
+        save.setOnAction(e -> startDownload(att));
+        actions.getChildren().add(save);
+
+        container.getChildren().addAll(preview, actions);
+        return container;
+    }
+
+    private Node renderGenericAttachment(FileAttachment att) {
         Label fileLabel = new Label("📎 " + att.getFileName() + " (" + formatBytes(att.getFileSize()) + ")");
         fileLabel.setStyle("-fx-text-fill: #00b0f4; -fx-font-weight: bold;");
         Button download = new Button("Download");
@@ -720,14 +1173,47 @@ public class MainChatController implements MessageListener {
         return box;
     }
 
+    private void openFileExternally(FileAttachment att) {
+        FileTransferClient.getInstance().downloadForPreview(att.getId(), att.getFileName(), path -> {
+            try {
+                if (Desktop.isDesktopSupported()) {
+                    new Thread(() -> {
+                        try { Desktop.getDesktop().open(path.toFile()); }
+                        catch (IOException ignored) {}
+                    }).start();
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
     private void showReactionMenu(MessageBubble bubble, double x, double y) {
-        ContextMenu menu = new ContextMenu();
+        if (emojiPopup != null) emojiPopup.hide();
+
+        emojiPopup = new javafx.stage.Popup();
+        emojiPopup.setAutoHide(true);
+
+        HBox bar = new HBox(2);
+        bar.setStyle("-fx-background-color: #18191c; -fx-background-radius: 8; -fx-padding: 4 6;");
+        bar.setAlignment(Pos.CENTER);
         for (String emoji : EMOJI_PALETTE) {
-            MenuItem item = new MenuItem(emoji);
-            item.setOnAction(e -> toggleReaction(bubble.messageId, emoji));
-            menu.getItems().add(item);
+            Button btn = new Button();
+            ImageView iv = emojiImageView(emoji, 24);
+            if (iv != null) {
+                btn.setGraphic(iv);
+            } else {
+                btn.setText(emoji);
+            }
+            btn.setStyle("-fx-background-color: transparent; -fx-padding: 4 6; -fx-cursor: hand; -fx-background-radius: 6;");
+            btn.setOnMouseEntered(e -> btn.setStyle(btn.getStyle() + "-fx-background-color: #2f3136;"));
+            btn.setOnMouseExited(e -> btn.setStyle(btn.getStyle().replace("-fx-background-color: #2f3136;", "")));
+            btn.setOnAction(e -> {
+                emojiPopup.hide();
+                toggleReaction(bubble.messageId, emoji);
+            });
+            bar.getChildren().add(btn);
         }
-        menu.show(bubble.root, x, y);
+        emojiPopup.getContent().add(bar);
+        emojiPopup.show(SceneManager.getPrimaryStage(), x, y - 50);
     }
 
     private void toggleReaction(long messageId, String emoji) {
@@ -839,15 +1325,13 @@ public class MainChatController implements MessageListener {
     }
 
     private final class MessageBubble {
-        final VBox root;
+        final Node root;
         final FlowPane reactionRow;
         final long messageId;
-        // emoji -> set of userIds who reacted with it
         final Map<String, java.util.LinkedHashSet<Long>> reactions = new LinkedHashMap<>();
-        // emoji -> the badge node currently rendered for it
         final Map<String, Button> badges = new LinkedHashMap<>();
 
-        MessageBubble(VBox root, FlowPane reactionRow, long messageId) {
+        MessageBubble(Node root, FlowPane reactionRow, long messageId) {
             this.root = root;
             this.reactionRow = reactionRow;
             this.messageId = messageId;
@@ -893,15 +1377,20 @@ public class MainChatController implements MessageListener {
 
         private void renderBadge(String emoji, java.util.Set<Long> users) {
             Button badge = badges.get(emoji);
-            String label = emoji + " " + users.size();
             if (badge == null) {
-                badge = new Button(label);
+                badge = new Button(String.valueOf(users.size()));
+                ImageView iv = emojiImageView(emoji, 14);
+                if (iv != null) {
+                    badge.setGraphic(iv);
+                } else {
+                    badge.setText(emoji + " " + users.size());
+                }
                 badge.getStyleClass().add("reaction-badge");
                 badge.setOnAction(e -> toggleReaction(messageId, emoji));
                 badges.put(emoji, badge);
                 reactionRow.getChildren().add(badge);
             } else {
-                badge.setText(label);
+                badge.setText(badge.getGraphic() != null ? String.valueOf(users.size()) : emoji + " " + users.size());
             }
             boolean mine = users.contains(currentUserId);
             badge.setStyle(mine

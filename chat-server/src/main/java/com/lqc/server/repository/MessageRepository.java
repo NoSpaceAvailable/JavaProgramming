@@ -157,6 +157,29 @@ public class MessageRepository {
         });
     }
 
+    public List<long[]> getRecentDmPeerIds(long userId) {
+        String sql = "SELECT sub.peer_id FROM (" +
+                "SELECT CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END AS peer_id, " +
+                "MAX(m.id) AS last_msg_id " +
+                "FROM messages m WHERE m.room_id IS NULL AND (m.sender_id = ? OR m.recipient_id = ?) " +
+                "GROUP BY 1" +
+                ") sub ORDER BY sub.last_msg_id DESC";
+        List<long[]> peers = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, userId);
+            stmt.setLong(2, userId);
+            stmt.setLong(3, userId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                peers.add(new long[]{rs.getLong("peer_id")});
+            }
+        } catch (SQLException e) {
+            logger.error("Error fetching recent DM peers for user {}", userId, e);
+        }
+        return peers;
+    }
+
     private interface StmtBinder {
         void bind(PreparedStatement stmt) throws SQLException;
     }
