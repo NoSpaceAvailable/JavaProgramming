@@ -1,156 +1,329 @@
-# Mini Discord
+# Mini Discord — Ứng dụng Chat thời gian thực
 
-A real-time multi-user chat application built with Java, inspired by Discord.
+> Đồ án môn **SE330.Q22 – Ngôn ngữ lập trình Java**
+> Trường Đại học Công nghệ Thông tin, ĐHQG-HCM
 
-## Features (Planned)
+Ứng dụng chat đa người dùng (multi-user) thời gian thực, lấy cảm hứng từ Discord, được xây dựng theo kiến trúc **client – server** với giao thức JSON truyền trên TCP. Hệ thống được tách thành nhiều module độc lập (microservices-style) theo mô hình Maven đa module, giúp phân tách rõ ràng giữa tầng giao thức dùng chung, tầng máy chủ và tầng giao diện.
 
-- [x] User registration and login (BCrypt password hashing)
-- [x] Group chat rooms (create, join, leave)
-- [x] Private messaging (1-on-1 DMs)
-- [x] File transfer (chunked upload/download)
-- [x] Emoji reactions on messages
-- [x] Online/Away/Offline status indicators
-- [x] Message history with pagination
-- [x] Discord-inspired dark theme UI
+---
 
-## Tech Stack
+## Thông tin nhóm
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Java 17 |
-| Build | Maven (multi-module) |
-| Server | Java Socket + Multithreading |
-| Client UI | JavaFX 21 |
-| Database | PostgreSQL |
+**Nhóm 26**
+
+| STT | Họ và tên |
+|-----|-----------|
+| 1 | Ngô Phúc Dương |
+| 2 | Hoàng Xuân Vinh |
+| 3 | Lê Quốc Cường |
+
+---
+
+## Mục lục
+
+1. [Giới thiệu](#1-giới-thiệu)
+2. [Tính năng](#2-tính-năng)
+3. [Công nghệ sử dụng](#3-công-nghệ-sử-dụng)
+4. [Kiến trúc tổng quan](#4-kiến-trúc-tổng-quan)
+5. [Cấu trúc thư mục](#5-cấu-trúc-thư-mục)
+6. [Giao thức truyền tin](#6-giao-thức-truyền-tin)
+7. [Cơ sở dữ liệu](#7-cơ-sở-dữ-liệu)
+8. [Yêu cầu hệ thống](#8-yêu-cầu-hệ-thống)
+9. [Hướng dẫn cài đặt](#9-hướng-dẫn-cài-đặt)
+10. [Hướng dẫn chạy chương trình](#10-hướng-dẫn-chạy-chương-trình)
+11. [Cấu hình](#11-cấu-hình)
+12. [Các mẫu thiết kế (Design Patterns)](#12-các-mẫu-thiết-kế-design-patterns)
+13. [Xử lý sự cố thường gặp](#13-xử-lý-sự-cố-thường-gặp)
+
+---
+
+## 1. Giới thiệu
+
+**Mini Discord** mô phỏng các chức năng cốt lõi của một ứng dụng nhắn tin nhóm hiện đại: đăng ký/đăng nhập, trò chuyện theo phòng (group chat), nhắn tin riêng 1-1 (DM), gửi file, thả cảm xúc (reaction), hiển thị trạng thái online và lịch sử tin nhắn.
+
+Hệ thống được chia làm 3 module Maven:
+
+- **`chat-common`** — Tầng dùng chung: định nghĩa giao thức truyền tin, các lớp model (đối tượng dữ liệu) và tiện ích serialize JSON. Cả server lẫn client đều phụ thuộc module này để đảm bảo hai bên "nói cùng một ngôn ngữ".
+- **`chat-server`** — Máy chủ: lắng nghe kết nối TCP, xử lý yêu cầu, truy xuất cơ sở dữ liệu và phát thông báo thời gian thực tới các client.
+- **`chat-client`** — Ứng dụng giao diện JavaFX cho người dùng cuối.
+
+---
+
+## 2. Tính năng
+
+- [x] **Đăng ký và đăng nhập** — mật khẩu được băm bằng BCrypt.
+- [x] **Phòng chat nhóm** — tạo, tham gia, rời phòng; hỗ trợ phòng công khai và riêng tư.
+- [x] **Nhắn tin riêng (DM 1-1)** — định tuyến tin nhắn trực tiếp giữa hai người dùng.
+- [x] **Truyền file** — tải lên/tải xuống theo từng khối (chunked) 64KB, kiểm tra toàn vẹn bằng SHA-256.
+- [x] **Thả cảm xúc (emoji reaction)** trên từng tin nhắn.
+- [x] **Hiển thị trạng thái** Online / Away / Offline theo thời gian thực.
+- [x] **Lịch sử tin nhắn** có phân trang (pagination).
+- [x] **Giao diện tối (dark theme)** lấy cảm hứng từ Discord.
+- [x] **Ảnh đại diện (avatar)** và cập nhật hồ sơ cá nhân.
+- [x] **Gửi ảnh GIF** thông qua tích hợp GIPHY API.
+
+---
+
+## 3. Công nghệ sử dụng
+
+| Thành phần | Công nghệ |
+|------------|-----------|
+| Ngôn ngữ | Java 17 |
+| Quản lý build | Maven (đa module) |
+| Máy chủ | Java Socket + Đa luồng (Multithreading) |
+| Giao diện | JavaFX 21 |
+| Cơ sở dữ liệu | PostgreSQL |
 | Connection Pool | HikariCP |
-| Serialization | Gson (JSON over TCP) |
-| Password Hashing | BCrypt |
-| Logging | SLF4J + Logback |
+| Serialize dữ liệu | Gson (JSON trên TCP) |
+| Băm mật khẩu | BCrypt |
+| Ghi log | SLF4J + Logback |
+| Kiểm thử | JUnit 5 |
 
-## Project Structure
+---
+
+## 4. Kiến trúc tổng quan
+
+Hệ thống hoạt động theo mô hình **client – server**, giao tiếp qua TCP socket bằng các thông điệp JSON có tiền tố độ dài.
+
+```
+┌────────────────────┐         TCP (JSON length-prefixed)        ┌────────────────────┐
+│    chat-client     │  ◄──────────────────────────────────────► │    chat-server     │
+│   (JavaFX UI)      │                                            │  (Socket + Thread) │
+│                    │   Request  ──────────────────────────►     │                    │
+│  ServerConnection  │   Response/Notification  ◄────────────     │  RequestDispatcher │
+└────────────────────┘                                            └─────────┬──────────┘
+            ▲                                                                │
+            │  cùng phụ thuộc                                                │ JDBC + HikariCP
+            │                                                                ▼
+     ┌──────┴───────┐                                              ┌────────────────────┐
+     │ chat-common  │  (Protocol, Model, JsonUtil dùng chung)      │    PostgreSQL      │
+     └──────────────┘                                              └────────────────────┘
+```
+
+**Luồng xử lý phía server:**
+
+`ChatServer` (mở `ServerSocket`, mỗi client một luồng qua cached thread pool) → `ClientHandler` (đọc/ghi thông điệp có tiền tố độ dài 4 byte) → `RequestDispatcher` (định tuyến theo `MessageType`, chặn các yêu cầu chưa đăng nhập) → tầng **Service** (`AuthService`, `MessageService`, `RoomService`, `ReactionService`, `FileService`) → tầng **Repository** (truy xuất PostgreSQL).
+
+`SessionManager` (singleton) quản lý các phiên đang online và thực hiện **broadcast** thông báo thời gian thực (tin nhắn mới, đổi trạng thái, reaction...) tới những client liên quan.
+
+**Luồng xử lý phía client:**
+
+`ServerConnection` (singleton) duy trì socket, gửi yêu cầu và lắng nghe thông báo bất đồng bộ trên một luồng riêng; mọi cập nhật giao diện được đưa về luồng JavaFX qua `Platform.runLater`. `SceneManager` điều phối chuyển màn hình giữa Login / Register / Main Chat. `MainChatController` là bộ điều khiển trung tâm của giao diện chat.
+
+---
+
+## 5. Cấu trúc thư mục
 
 ```
 JavaProgramming/
-├── pom.xml                  (parent POM)
-├── chat-common/             (shared models, protocol, utilities)
-├── chat-server/             (server: socket, handlers, DB, services)
-└── chat-client/             (JavaFX UI: controllers, components, FXML)
+├── pom.xml                  (POM cha — quản lý phiên bản & module)
+├── README.md
+├── TRACKING.md              (theo dõi tiến độ các giai đoạn)
+│
+├── chat-common/             Module dùng chung
+│   └── src/main/java/com/lqc/common/
+│       ├── model/           User, Room, Message, Reaction, FileAttachment, UserStatus
+│       ├── protocol/        ProtocolMessage, MessageType
+│       │   ├── request/     Các DTO yêu cầu (Login, CreateRoom, SendMessage, ...)
+│       │   ├── response/    Các DTO phản hồi
+│       │   └── notification/ Các DTO thông báo đẩy từ server
+│       └── util/            JsonUtil, ProtocolConstants
+│
+├── chat-server/             Module máy chủ
+│   └── src/main/
+│       ├── java/com/lqc/server/
+│       │   ├── ChatServer.java       (điểm khởi động)
+│       │   ├── ClientHandler.java    (xử lý kết nối từng client)
+│       │   ├── handler/              (các handler xử lý yêu cầu + RequestDispatcher)
+│       │   ├── service/              (logic nghiệp vụ)
+│       │   ├── repository/           (truy xuất CSDL)
+│       │   ├── manager/              (SessionManager)
+│       │   ├── database/             (DatabaseConfig, DatabaseInitializer)
+│       │   └── util/                 (ConfigUtil)
+│       └── resources/        schema.sql, server.properties, logback.xml
+│
+└── chat-client/             Module giao diện (JavaFX)
+    └── src/main/
+        ├── java/com/lqc/client/
+        │   ├── ChatClientApp.java    (lớp Application của JavaFX)
+        │   ├── Launcher.java         (điểm khởi động)
+        │   ├── controller/           (Login, Register, MainChat)
+        │   ├── net/                  (ServerConnection, MessageListener, FileTransferClient)
+        │   ├── gif/                  (tích hợp GIPHY)
+        │   └── util/                 (SceneManager)
+        └── resources/        fxml/, css/dark-theme.css, emojis/, client.properties
 ```
 
-## Prerequisites
+---
 
-- **Java 17+** (JDK, not just JRE)
-- **Maven 3.8+**
-- **PostgreSQL 14+**
+## 6. Giao thức truyền tin
 
-## Setup Instructions
+Mỗi thông điệp trên đường truyền gồm **tiền tố độ dài 4 byte (big-endian)** + phần thân JSON (UTF-8). Phần thân là một đối tượng `ProtocolMessage`:
 
-### 1. Install Java 17
+| Trường | Kiểu | Ý nghĩa |
+|--------|------|---------|
+| `type` | `MessageType` | Loại thông điệp (xác định cách xử lý) |
+| `payload` | `String` | Nội dung JSON của request/response/notification cụ thể |
+| `requestId` | `String` | Mã UUID để ghép cặp yêu cầu – phản hồi |
+| `timestamp` | `long` | Thời điểm tạo (Unix ms) |
 
-Download and install JDK 17 or later from [Adoptium](https://adoptium.net/) or [Oracle](https://www.oracle.com/java/technologies/downloads/).
+- `MessageType` định nghĩa khoảng 50 loại thông điệp, chia nhóm: **Auth** (login/register), **Room** (tạo/tham gia/rời/liệt kê phòng), **Message** (gửi tin, lịch sử), **File** (upload/download theo chunk), **Reaction**, **Status**, **Profile/Avatar**, và **Notification** (server đẩy xuống client).
+- `JsonUtil` dùng Gson để serialize, kèm **adapter tùy biến cho `LocalDateTime`** (lưu/đọc theo định dạng ISO-8601) nhằm tương thích với hệ thống module của Java 17.
+- Các hằng số chung trong `ProtocolConstants`: cổng mặc định `9000`, kích thước khối file `65536` (64KB), giới hạn file `50MB`, kích thước trang lịch sử `50`.
 
-Verify installation:
+---
+
+## 7. Cơ sở dữ liệu
+
+CSDL **PostgreSQL** gồm 7 bảng, được khởi tạo **tự động** khi server chạy lần đầu (từ `schema.sql`):
+
+| Bảng | Vai trò |
+|------|---------|
+| `users` | Tài khoản người dùng (username, mật khẩu băm, display name, avatar, trạng thái) |
+| `rooms` | Thông tin phòng chat (tên, mô tả, chủ phòng, công khai/riêng tư) |
+| `room_members` | Quan hệ thành viên – phòng (kèm vai trò OWNER/MEMBER) |
+| `messages` | Tin nhắn phòng và tin nhắn riêng (phân biệt qua `room_id`/`recipient_id`) |
+| `file_attachments` | Metadata file đính kèm (đường dẫn, kích thước, MIME, checksum) |
+| `reactions` | Cảm xúc thả trên tin nhắn (ràng buộc duy nhất theo message + user + emoji) |
+| `dm_conversations` | Theo dõi các cuộc hội thoại riêng giữa hai người dùng |
+
+> **Lưu ý:** Bạn **không** cần chạy script SQL thủ công. Các bảng được tạo tự động khi server khởi động lần đầu.
+
+---
+
+## 8. Yêu cầu hệ thống
+
+- **Java 17 trở lên** (JDK, không phải chỉ JRE)
+- **Maven 3.8 trở lên**
+- **PostgreSQL 14 trở lên**
+
+Kiểm tra cài đặt:
+
 ```bash
 java -version
 mvn -version
 ```
 
-### 2. Install and Configure PostgreSQL
+---
 
-1. Download and install PostgreSQL from [postgresql.org](https://www.postgresql.org/download/).
+## 9. Hướng dẫn cài đặt
 
-2. Make sure the PostgreSQL service is running.
+### 9.1. Cài đặt Java 17
 
-3. Create the database:
+Tải JDK 17 trở lên từ [Adoptium](https://adoptium.net/) hoặc [Oracle](https://www.oracle.com/java/technologies/downloads/).
+
+### 9.2. Cài đặt và cấu hình PostgreSQL
+
+1. Tải và cài PostgreSQL từ [postgresql.org](https://www.postgresql.org/download/).
+2. Đảm bảo dịch vụ PostgreSQL đang chạy.
+3. Tạo cơ sở dữ liệu:
+
 ```bash
 psql -U postgres -h localhost -c "CREATE DATABASE chat_app;"
 ```
-> You will be prompted for the `postgres` user password you set during installation.
 
-4. Update the database credentials in `chat-server/src/main/resources/server.properties`:
+> Bạn sẽ được yêu cầu nhập mật khẩu của tài khoản `postgres` đã đặt khi cài đặt.
+
+4. Cập nhật thông tin kết nối CSDL trong `chat-server/src/main/resources/server.properties`:
+
 ```properties
 db.url=jdbc:postgresql://localhost:5432/chat_app
 db.username=postgres
-db.password=YOUR_PASSWORD_HERE
+db.password=MẬT_KHẨU_CỦA_BẠN
 ```
-> Replace `YOUR_PASSWORD_HERE` with your actual PostgreSQL password.
 
-> **Note:** The database tables are created automatically when the server starts for the first time. You do not need to run any SQL scripts manually.
+### 9.3. Build dự án
 
-### 3. Build the Project
+Tại thư mục gốc của dự án:
 
-From the project root directory:
 ```bash
-mvn clean install -p # ensure maven doesn't use cached packages
+mvn clean install
 ```
 
-All three modules (chat-common, chat-server, chat-client) will be compiled and packaged.
+Cả ba module (`chat-common`, `chat-server`, `chat-client`) sẽ được biên dịch và đóng gói.
 
-### 4. Run the Server
+---
+
+## 10. Hướng dẫn chạy chương trình
+
+### 10.1. Chạy Server
 
 ```bash
 cd chat-server
 mvn exec:java "-Dexec.mainClass=com.lqc.server.ChatServer" "-Duser.timezone=UTC"
 ```
 
-You should see:
+Khi thành công, bạn sẽ thấy:
+
 ```
 Chat server started on port 9000
 ```
 
-### 5. Run the Client
+### 10.2. Chạy Client
 
-Open a **new terminal** and run:
+Mở một **cửa sổ terminal mới**:
+
 ```bash
 cd chat-client
 mvn javafx:run
 ```
 
-A login window will appear. You can:
-1. Click **Register** to create a new account
-2. Log in with your credentials
+Cửa sổ đăng nhập sẽ hiện ra. Bạn có thể:
 
-> You can run multiple client instances in separate terminals to test multi-user chat.
+1. Nhấn **Register** để tạo tài khoản mới.
+2. Đăng nhập bằng tài khoản đã tạo.
 
-## Configuration
+> Có thể mở nhiều client ở các terminal khác nhau để thử nghiệm chat đa người dùng.
 
-### Server (`chat-server/src/main/resources/server.properties`)
+---
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `server.port` | `9000` | TCP port the server listens on |
-| `db.url` | `jdbc:postgresql://localhost:5432/chat_app` | JDBC connection URL |
-| `db.username` | `postgres` | Database username |
-| `db.password` | *(must be set)* | Database password |
-| `db.pool.size` | `10` | HikariCP connection pool size |
-| `file.storage.path` | `./uploads` | Directory for uploaded files |
-| `file.max.size.mb` | `50` | Max file upload size in MB |
+## 11. Cấu hình
 
-### Client (`chat-client/src/main/resources/client.properties`)
+### 11.1. Server (`chat-server/src/main/resources/server.properties`)
 
-| Property | Default | Description |
-|----------|---------|-------------|
-| `server.host` | `localhost` | Server hostname |
-| `server.port` | `9000` | Server port |
+| Thuộc tính | Mặc định | Mô tả |
+|------------|----------|-------|
+| `server.port` | `9000` | Cổng TCP server lắng nghe |
+| `db.url` | `jdbc:postgresql://localhost:5432/chat_app` | Chuỗi kết nối JDBC |
+| `db.username` | `postgres` | Tên đăng nhập CSDL |
+| `db.password` | *(bắt buộc đặt)* | Mật khẩu CSDL |
+| `db.pool.size` | `10` | Số kết nối trong pool HikariCP |
+| `file.storage.path` | `./uploads` | Thư mục lưu file tải lên |
+| `file.max.size.mb` | `50` | Dung lượng file tối đa (MB) |
 
-## Troubleshooting
+### 11.2. Client (`chat-client/src/main/resources/client.properties`)
+
+| Thuộc tính | Mặc định | Mô tả |
+|------------|----------|-------|
+| `server.host` | `localhost` | Tên máy chủ |
+| `server.port` | `9000` | Cổng máy chủ |
+
+---
+
+## 12. Các mẫu thiết kế (Design Patterns)
+
+- **Command** — `RequestDispatcher` định tuyến thông điệp giao thức tới handler tương ứng.
+- **Observer** — `MessageListener` nhận thông báo thời gian thực ở phía client.
+- **MVC** — FXML (View) + Controller + Model (`chat-common`).
+- **Repository** — tầng truy xuất CSDL riêng cho từng thực thể.
+- **Singleton** — `SessionManager` (server) và `ServerConnection` (client) quản lý trạng thái dùng chung an toàn đa luồng.
+
+---
+
+## 13. Xử lý sự cố thường gặp
 
 ### "database does not exist"
-Run: `psql -U postgres -h localhost -c "CREATE DATABASE chat_app;"`
+
+Chạy lệnh: `psql -U postgres -h localhost -c "CREATE DATABASE chat_app;"`
 
 ### "password authentication failed"
-Check that `db.password` in `server.properties` matches your PostgreSQL password.
 
-### Multiple PostgreSQL instances (WSL + Windows)
-If you have both WSL and native Windows PostgreSQL, they may conflict on port 5432. The Java application connects to `localhost` which may resolve to a different instance than `psql`. Use `psql -h 127.0.0.1` to verify which instance has the `chat_app` database, or stop one of the instances.
+Kiểm tra `db.password` trong `server.properties` có khớp với mật khẩu PostgreSQL của bạn không.
 
-### JavaFX "module not found"
-Make sure you are using `mvn javafx:run` (not `java -jar`) to launch the client. The `javafx-maven-plugin` handles module path configuration automatically.
+### Có nhiều phiên bản PostgreSQL (WSL + Windows)
 
-## Design Patterns
+Nếu bạn cài cả PostgreSQL trên WSL lẫn Windows, chúng có thể xung đột ở cổng 5432. Ứng dụng Java kết nối tới `localhost`, có thể trỏ tới phiên bản khác với khi bạn dùng `psql`. Hãy dùng `psql -h 127.0.0.1` để xác định phiên bản nào đang chứa CSDL `chat_app`, hoặc dừng một phiên bản.
 
-- **Command** — `RequestDispatcher` routes protocol messages to handlers
-- **Observer** — `MessageListener` for real-time client notifications
-- **MVC** — FXML (View) + Controllers + Models (chat-common)
-- **Repository** — Database access layer per entity
-- **Singleton** — `SessionManager` for thread-safe session tracking
+### JavaFX báo "module not found"
+
+Hãy chắc chắn dùng `mvn javafx:run` (không dùng `java -jar`) để chạy client. Plugin `javafx-maven-plugin` sẽ tự cấu hình module path.
