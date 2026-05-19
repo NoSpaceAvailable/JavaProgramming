@@ -26,17 +26,31 @@ public final class ConfigUtil {
 
     private ConfigUtil() {}
 
+    /**
+     * Resolves a config value. An environment variable takes precedence over the
+     * bundled server.properties, so Docker/containerized deployments can inject
+     * credentials without rebuilding the image. The env var name is the key
+     * upper-cased with dots replaced by underscores (e.g. {@code db.url} -> {@code DB_URL}).
+     */
     public static String get(String key, String defaultValue) {
+        String env = System.getenv(toEnvKey(key));
+        if (env != null && !env.isBlank()) {
+            return env;
+        }
         return properties.getProperty(key, defaultValue);
     }
 
     public static int getInt(String key, int defaultValue) {
-        String value = properties.getProperty(key);
+        String value = get(key, null);
         if (value == null) return defaultValue;
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private static String toEnvKey(String key) {
+        return key.toUpperCase().replace('.', '_');
     }
 }

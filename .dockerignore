@@ -1,0 +1,15 @@
+# Build output — rebuilt inside the image
+**/target/
+
+# IDE / VCS
+.git/
+.gitignore
+.idea/
+*.iml
+
+# Runtime / local artifacts
+uploads/
+*.log
+
+# Docs not needed for the build
+*.md

@@ -1,0 +1,57 @@
+# Mini Discord — server + database stack.
+#
+#   docker compose up --build      # build & start (server + postgres)
+#   docker compose logs -f server  # follow server logs
+#   docker compose down            # stop (data kept in named volumes)
+#   docker compose down -v         # stop & wipe database + uploads
+#
+# The JavaFX client runs OUTSIDE Docker (mvn javafx:run) and connects to this
+# server over TCP — see README section "Chạy bằng Docker".
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: minidiscord-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chat_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ABCabc123@@@
+    ports:
+      # Host 5433 -> container 5432 (host already runs PostgreSQL on 5432).
+      # Only needed if you want to inspect the DB from the host; server uses
+      # the internal docker network and does not rely on this mapping.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chat_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: .
+    container_name: minidiscord-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # ConfigUtil reads these (env overrides bundled server.properties).
+      # Host is the compose service name "postgres" on the internal network.
+      DB_URL: jdbc:postgresql://postgres:5432/chat_app?TimeZone=UTC
+      DB_USERNAME: postgres
+      DB_PASSWORD: ABCabc123@@@
+      DB_POOL_SIZE: "10"
+      SERVER_PORT: "9000"
+      FILE_MAX_SIZE_MB: "50"
+    ports:
+      # Exposes the chat server to the host LAN so external clients can connect.
+      - "9000:9000"
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  pgdata:
+  uploads:

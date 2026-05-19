@@ -2,6 +2,7 @@ package com.lqc.client.controller;
 
 import com.lqc.client.net.MessageListener;
 import com.lqc.client.net.ServerConnection;
+import com.lqc.client.util.ClientConfig;
 import com.lqc.client.util.SceneManager;
 import com.lqc.common.protocol.MessageType;
 import com.lqc.common.protocol.ProtocolMessage;
@@ -72,7 +73,7 @@ public class LoginController implements MessageListener {
 
         if (!connection.isConnected()) {
             try {
-                connection.connect("localhost", 9000);
+                connection.connect(ClientConfig.getServerHost(), ClientConfig.getServerPort());
             } catch (Exception e) {
                 showError("Cannot connect to server: " + e.getMessage());
                 loginButton.setDisable(false);

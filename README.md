@@ -193,9 +193,10 @@ CSDL **PostgreSQL** gồm 7 bảng, được khởi tạo **tự động** khi s
 
 ## 8. Yêu cầu hệ thống
 
-- **Java 17 trở lên** (JDK, không phải chỉ JRE)
-- **Maven 3.8 trở lên**
-- **PostgreSQL 14 trở lên**
+- **Java 17 trở lên** (JDK, không phải chỉ JRE) — bắt buộc, để chạy client
+- **Maven 3.8 trở lên** — bắt buộc
+- **PostgreSQL 14 trở lên** — chỉ cần nếu chạy server thủ công (Cách B)
+- **Docker + Docker Compose** — *(tùy chọn)* nếu chạy server bằng Docker (Cách A, khuyến nghị); khi đó không cần cài PostgreSQL riêng
 
 Kiểm tra cài đặt:
 
@@ -246,7 +247,43 @@ Cả ba module (`chat-common`, `chat-server`, `chat-client`) sẽ được biên
 
 ## 10. Hướng dẫn chạy chương trình
 
-### 10.1. Chạy Server
+Server có thể chạy theo **2 cách**: bằng Docker (khuyến nghị — dựng sẵn cả PostgreSQL) hoặc thủ công. **Client luôn chạy bên ngoài (native)** bằng `mvn javafx:run` để phân phát cho từng người dùng.
+
+### 10.1. Cách A — Chạy Server + Database bằng Docker (khuyến nghị)
+
+Cách này dựng đồng thời PostgreSQL và chat-server trong container, **không cần cài PostgreSQL** trên máy. Yêu cầu: đã cài Docker + Docker Compose.
+
+Tại thư mục gốc dự án:
+
+```bash
+docker compose up --build -d
+```
+
+Lệnh này sẽ:
+
+- Khởi tạo container PostgreSQL (`minidiscord-db`) với database `chat_app`.
+- Build và chạy chat-server (`minidiscord-server`), tự tạo 7 bảng khi khởi động.
+- Mở cổng `9000` ra máy host để client kết nối.
+
+Kiểm tra trạng thái và log:
+
+```bash
+docker compose ps
+docker compose logs -f server   # chờ tới khi thấy "Chat server started on port 9000"
+```
+
+Dừng / xoá:
+
+```bash
+docker compose down       # dừng, vẫn giữ dữ liệu (named volume)
+docker compose down -v    # dừng và xoá sạch database + file đã upload
+```
+
+> Thông tin kết nối DB được truyền qua biến môi trường trong `docker-compose.yml`; server đọc qua `ConfigUtil` với thứ tự ưu tiên **biến môi trường > `server.properties`**. Cổng host của PostgreSQL được map ra `5433` để tránh xung đột nếu máy bạn đã chạy PostgreSQL ở cổng 5432.
+
+### 10.2. Cách B — Chạy Server thủ công (không dùng Docker)
+
+Yêu cầu đã cài và cấu hình PostgreSQL như mục [9.2](#92-cài-đặt-và-cấu-hình-postgresql).
 
 ```bash
 cd chat-server
@@ -259,7 +296,7 @@ Khi thành công, bạn sẽ thấy:
 Chat server started on port 9000
 ```
 
-### 10.2. Chạy Client
+### 10.3. Chạy Client (dùng cho cả hai cách trên)
 
 Mở một **cửa sổ terminal mới**:
 
@@ -268,12 +305,20 @@ cd chat-client
 mvn javafx:run
 ```
 
+Mặc định client kết nối tới `localhost:9000`. Nếu server chạy ở máy khác (hoặc bạn phân phát cho người dùng khác **trong cùng mạng LAN**), chỉ cần trỏ tới IP của máy chủ:
+
+```bash
+mvn javafx:run -Dserver.host=<IP_MÁY_CHỦ> -Dserver.port=9000
+```
+
+> Ngoài tham số `-D`, có thể đặt biến môi trường `SERVER_HOST` / `SERVER_PORT`, hoặc sửa file `chat-client/src/main/resources/client.properties`. Thứ tự ưu tiên: tham số `-D` > biến môi trường > `client.properties` > mặc định.
+
 Cửa sổ đăng nhập sẽ hiện ra. Bạn có thể:
 
 1. Nhấn **Register** để tạo tài khoản mới.
 2. Đăng nhập bằng tài khoản đã tạo.
 
-> Có thể mở nhiều client ở các terminal khác nhau để thử nghiệm chat đa người dùng.
+> Có thể mở nhiều client ở các terminal/máy khác nhau để thử nghiệm chat đa người dùng.
 
 ---
 
