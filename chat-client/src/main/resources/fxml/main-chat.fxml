@@ -69,6 +69,8 @@
                     <Label fx:id="headerStatusLabel" text="" style="-fx-font-size: 12px;"
                            visible="false" managed="false"/>
                     <Region HBox.hgrow="ALWAYS"/>
+                    <Button fx:id="inviteButton" text="+ Add member" styleClass="button-link"
+                            onAction="#handleInviteMember" visible="false" managed="false"/>
                     <Button fx:id="leaveButton" text="Leave Room" styleClass="button-link"
                             onAction="#handleLeaveRoom" visible="false" managed="false"/>
                 </HBox>

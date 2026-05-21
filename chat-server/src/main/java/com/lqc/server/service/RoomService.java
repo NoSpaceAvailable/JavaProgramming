@@ -1,7 +1,9 @@
 package com.lqc.server.service;
 
 import com.lqc.common.model.Room;
+import com.lqc.common.model.User;
 import com.lqc.server.repository.RoomRepository;
+import com.lqc.server.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,10 +12,12 @@ import java.util.Optional;
 public class RoomService {
     private static final Logger logger = LoggerFactory.getLogger(RoomService.class);
     private final RoomRepository roomRepository = new RoomRepository();
+    private final UserRepository userRepository = new UserRepository();
 
     public record CreateResult(boolean success, String message, Room room) {}
     public record JoinResult(boolean success, String message, Room room, boolean alreadyMember) {}
     public record LeaveResult(boolean success, String message) {}
+    public record InviteResult(boolean success, String message, Room room, User target, boolean alreadyMember) {}
 
     public CreateResult create(String name, String description, long ownerId, boolean isPrivate) {
         if (name == null || name.trim().length() < 2) {
@@ -47,6 +51,33 @@ public class RoomService {
         }
         roomRepository.addMember(roomId, userId, "MEMBER");
         return new JoinResult(true, "Joined", room, false);
+    }
+
+    /**
+     * Adds {@code targetUserId} to a room on behalf of {@code inviterId}.
+     * The inviter must already be a member; this is the only way to get into a
+     * private room. Bypasses the private-room check that {@link #join} enforces.
+     */
+    public InviteResult invite(long roomId, long inviterId, long targetUserId) {
+        Optional<Room> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) {
+            return new InviteResult(false, "Room not found", null, null, false);
+        }
+        if (!roomRepository.isMember(roomId, inviterId)) {
+            return new InviteResult(false, "Only room members can invite others", null, null, false);
+        }
+        Optional<User> targetOpt = userRepository.findById(targetUserId);
+        if (targetOpt.isEmpty()) {
+            return new InviteResult(false, "User not found", null, null, false);
+        }
+        Room room = roomOpt.get();
+        User target = targetOpt.get();
+        if (roomRepository.isMember(roomId, targetUserId)) {
+            return new InviteResult(true, target.getDisplayName() + " is already a member", room, target, true);
+        }
+        roomRepository.addMember(roomId, targetUserId, "MEMBER");
+        logger.info("User {} invited user {} to room {}", inviterId, targetUserId, roomId);
+        return new InviteResult(true, "Added " + target.getDisplayName(), room, target, false);
     }
 
     public LeaveResult leave(long roomId, long userId) {

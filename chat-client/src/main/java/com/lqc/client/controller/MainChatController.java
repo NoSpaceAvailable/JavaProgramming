@@ -15,6 +15,7 @@ import com.lqc.common.model.User;
 import com.lqc.common.model.UserStatus;
 import com.lqc.common.protocol.MessageType;
 import com.lqc.common.protocol.ProtocolMessage;
+import com.lqc.common.protocol.notification.AddedToRoomNotification;
 import com.lqc.common.protocol.notification.NewMessageNotification;
 import com.lqc.common.protocol.notification.ReactionNotification;
 import com.lqc.common.protocol.notification.StatusChangeNotification;
@@ -70,6 +71,7 @@ public class MainChatController implements MessageListener {
     @FXML private Label conversationTitle;
     @FXML private Label membersTitle;
     @FXML private Button leaveButton;
+    @FXML private Button inviteButton;
     @FXML private ListView<Room> roomListView;
     @FXML private ListView<DmEntry> dmListView;
     @FXML private ListView<User> memberListView;
@@ -423,6 +425,40 @@ public class MainChatController implements MessageListener {
     }
 
     @FXML
+    private void handleInviteMember() {
+        if (active == null || active.kind != Conversation.Kind.ROOM) return;
+        long roomId = active.id;
+
+        // Candidates = known users not already in this room.
+        java.util.Set<Long> memberIds = new java.util.HashSet<>();
+        for (User m : members) memberIds.add(m.getId());
+        Map<String, User> labelToUser = new LinkedHashMap<>();
+        for (User u : knownUsers.values()) {
+            if (u.getId() == currentUserId || memberIds.contains(u.getId())) continue;
+            String dot = switch (u.getStatus() != null ? u.getStatus() : UserStatus.OFFLINE) {
+                case ONLINE -> "● ";
+                case AWAY -> "◐ ";
+                case OFFLINE -> "○ ";
+            };
+            labelToUser.put(dot + u.getDisplayName() + " (@" + u.getUsername() + ")", u);
+        }
+        if (labelToUser.isEmpty()) {
+            // Refresh the user list in case it is stale, then inform the user.
+            connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
+            showAlert(Alert.AlertType.INFORMATION, "No other users available to add right now.");
+            return;
+        }
+        List<String> labels = new ArrayList<>(labelToUser.keySet());
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(labels.get(0), labels);
+        dialog.setTitle("Add member");
+        dialog.setHeaderText("Add a user to \"" + active.title + "\"");
+        dialog.setContentText("User:");
+        dialog.showAndWait().map(labelToUser::get).ifPresent(u ->
+                connection.send(JsonUtil.wrap(MessageType.INVITE_TO_ROOM_REQUEST,
+                        new InviteToRoomRequest(roomId, u.getId()))));
+    }
+
+    @FXML
     private void handleNewDm() {
         if (knownUsers.isEmpty()) {
             connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
@@ -564,6 +600,8 @@ public class MainChatController implements MessageListener {
         conversationTitle.setText("# " + room.getName());
         leaveButton.setVisible(true);
         leaveButton.setManaged(true);
+        inviteButton.setVisible(true);
+        inviteButton.setManaged(true);
         membersPanel.setVisible(true);
         membersPanel.setManaged(true);
         membersTitle.setText("MEMBERS");
@@ -589,6 +627,8 @@ public class MainChatController implements MessageListener {
         conversationTitle.setText("@ " + dm.displayName);
         leaveButton.setVisible(false);
         leaveButton.setManaged(false);
+        inviteButton.setVisible(false);
+        inviteButton.setManaged(false);
         membersPanel.setVisible(false);
         membersPanel.setManaged(false);
         messageInput.setDisable(false);
@@ -657,6 +697,8 @@ public class MainChatController implements MessageListener {
             case CREATE_ROOM_RESPONSE -> onCreateRoomResponse(message);
             case JOIN_ROOM_RESPONSE -> onJoinRoomResponse(message);
             case LEAVE_ROOM_RESPONSE -> onLeaveRoomResponse(message);
+            case INVITE_TO_ROOM_RESPONSE -> onInviteResponse(message);
+            case ADDED_TO_ROOM_NOTIFICATION -> onAddedToRoom(message);
             case LIST_ROOMS_RESPONSE -> onRoomListResponse(message, false);
             case LIST_PUBLIC_ROOMS_RESPONSE -> onRoomListResponse(message, true);
             case ROOM_MEMBERS_RESPONSE -> onRoomMembersResponse(message);
@@ -717,6 +759,8 @@ public class MainChatController implements MessageListener {
             conversationTitle.setText("Select a room or DM");
             leaveButton.setVisible(false);
             leaveButton.setManaged(false);
+            inviteButton.setVisible(false);
+            inviteButton.setManaged(false);
             clearMessages();
             messageInput.setDisable(true);
             attachButton.setDisable(true);
@@ -763,6 +807,28 @@ public class MainChatController implements MessageListener {
             }
             membersTitle.setText("MEMBERS — " + r.getMembers().size());
         }
+    }
+
+    private void onInviteResponse(ProtocolMessage m) {
+        InviteToRoomResponse r = JsonUtil.fromJson(m.getPayload(), InviteToRoomResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        // The member panel refreshes via USER_JOINED_NOTIFICATION; just confirm.
+        showAlert(Alert.AlertType.INFORMATION, r.getMessage());
+    }
+
+    private void onAddedToRoom(ProtocolMessage m) {
+        AddedToRoomNotification n = JsonUtil.fromJson(m.getPayload(), AddedToRoomNotification.class);
+        Room room = n.getRoom();
+        if (room == null) return;
+        if (rooms.stream().noneMatch(rr -> rr.getId() == room.getId())) {
+            rooms.add(room);
+        }
+        showAlert(Alert.AlertType.INFORMATION,
+                (n.getInviterName() != null ? n.getInviterName() : "Someone")
+                        + " added you to \"" + room.getName() + "\".");
     }
 
     private void onUserListResponse(ProtocolMessage m) {

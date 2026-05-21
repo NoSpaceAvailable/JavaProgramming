@@ -22,6 +22,7 @@ public class RequestDispatcher {
         handlers.put(MessageType.CREATE_ROOM_REQUEST, new CreateRoomHandler());
         handlers.put(MessageType.JOIN_ROOM_REQUEST, new JoinRoomHandler());
         handlers.put(MessageType.LEAVE_ROOM_REQUEST, new LeaveRoomHandler());
+        handlers.put(MessageType.INVITE_TO_ROOM_REQUEST, new InviteToRoomHandler());
         handlers.put(MessageType.LIST_ROOMS_REQUEST, new ListRoomsHandler());
         handlers.put(MessageType.LIST_PUBLIC_ROOMS_REQUEST, new ListPublicRoomsHandler());
         handlers.put(MessageType.ROOM_MEMBERS_REQUEST, new RoomMembersHandler());

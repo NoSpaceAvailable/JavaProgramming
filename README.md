@@ -53,6 +53,7 @@ Hệ thống được chia làm 3 module Maven:
 
 - [x] **Đăng ký và đăng nhập** — mật khẩu được băm bằng BCrypt.
 - [x] **Phòng chat nhóm** — tạo, tham gia, rời phòng; hỗ trợ phòng công khai và riêng tư.
+- [x] **Thêm/mời người vào phòng** — bất kỳ thành viên nào cũng có thể thêm người dùng khác vào phòng (kể cả phòng riêng tư).
 - [x] **Nhắn tin riêng (DM 1-1)** — định tuyến tin nhắn trực tiếp giữa hai người dùng.
 - [x] **Truyền file** — tải lên/tải xuống theo từng khối (chunked) 64KB, kiểm tra toàn vẹn bằng SHA-256.
 - [x] **Thả cảm xúc (emoji reaction)** trên từng tin nhắn.
