@@ -18,6 +18,7 @@ public class RoomService {
     public record JoinResult(boolean success, String message, Room room, boolean alreadyMember) {}
     public record LeaveResult(boolean success, String message) {}
     public record InviteResult(boolean success, String message, Room room, User target, boolean alreadyMember) {}
+    public record RemoveResult(boolean success, String message, Room room, User target) {}
 
     public CreateResult create(String name, String description, long ownerId, boolean isPrivate) {
         if (name == null || name.trim().length() < 2) {
@@ -78,6 +79,34 @@ public class RoomService {
         roomRepository.addMember(roomId, targetUserId, "MEMBER");
         logger.info("User {} invited user {} to room {}", inviterId, targetUserId, roomId);
         return new InviteResult(true, "Added " + target.getDisplayName(), room, target, false);
+    }
+
+    /**
+     * Removes (kicks) {@code targetUserId} from a room. Only the room owner may
+     * do this, and the owner cannot remove themselves (they should delete/leave instead).
+     */
+    public RemoveResult removeMember(long roomId, long requesterId, long targetUserId) {
+        Optional<Room> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) {
+            return new RemoveResult(false, "Room not found", null, null);
+        }
+        Room room = roomOpt.get();
+        if (room.getOwnerId() != requesterId) {
+            return new RemoveResult(false, "Only the room owner can remove members", null, null);
+        }
+        if (targetUserId == requesterId) {
+            return new RemoveResult(false, "The owner cannot remove themselves", null, null);
+        }
+        Optional<User> targetOpt = userRepository.findById(targetUserId);
+        if (targetOpt.isEmpty()) {
+            return new RemoveResult(false, "User not found", null, null);
+        }
+        if (!roomRepository.isMember(roomId, targetUserId)) {
+            return new RemoveResult(false, "User is not a member of this room", null, null);
+        }
+        roomRepository.removeMember(roomId, targetUserId);
+        logger.info("Owner {} removed user {} from room {}", requesterId, targetUserId, roomId);
+        return new RemoveResult(true, "Removed " + targetOpt.get().getDisplayName(), room, targetOpt.get());
     }
 
     public LeaveResult leave(long roomId, long userId) {

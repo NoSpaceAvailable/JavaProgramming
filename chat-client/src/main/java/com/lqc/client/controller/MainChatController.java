@@ -18,6 +18,7 @@ import com.lqc.common.protocol.ProtocolMessage;
 import com.lqc.common.protocol.notification.AddedToRoomNotification;
 import com.lqc.common.protocol.notification.NewMessageNotification;
 import com.lqc.common.protocol.notification.ReactionNotification;
+import com.lqc.common.protocol.notification.RemovedFromRoomNotification;
 import com.lqc.common.protocol.notification.StatusChangeNotification;
 import com.lqc.common.protocol.notification.UserJoinedNotification;
 import com.lqc.common.protocol.notification.UserLeftNotification;
@@ -144,6 +145,7 @@ public class MainChatController implements MessageListener {
     }
 
     private Conversation active;
+    private Room currentRoom; // the Room object for the currently open room (null for DMs), used for owner checks
     private javafx.stage.Popup emojiPopup;
     private Image cachedAvatar;
     private final Map<Long, Image> userAvatarCache = new HashMap<>();
@@ -247,6 +249,22 @@ public class MainChatController implements MessageListener {
                 cell.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(cell);
+
+                // Owner-only: right-click a member to remove them from the room.
+                boolean canKick = currentRoom != null
+                        && currentRoom.getOwnerId() == currentUserId
+                        && user.getId() != currentUserId;
+                if (canKick) {
+                    ContextMenu menu = new ContextMenu();
+                    MenuItem kick = new MenuItem("Remove from room");
+                    long targetId = user.getId();
+                    String targetName = user.getDisplayName();
+                    kick.setOnAction(ev -> confirmRemoveMember(targetId, targetName));
+                    menu.getItems().add(kick);
+                    setContextMenu(menu);
+                } else {
+                    setContextMenu(null);
+                }
             }
         });
         memberListView.setOnMouseClicked(e -> {
@@ -458,6 +476,17 @@ public class MainChatController implements MessageListener {
                         new InviteToRoomRequest(roomId, u.getId()))));
     }
 
+    private void confirmRemoveMember(long userId, String displayName) {
+        if (active == null || active.kind != Conversation.Kind.ROOM) return;
+        long roomId = active.id;
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Remove " + displayName + " from \"" + active.title + "\"?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b ->
+                connection.send(JsonUtil.wrap(MessageType.REMOVE_MEMBER_REQUEST,
+                        new RemoveMemberRequest(roomId, userId))));
+    }
+
     @FXML
     private void handleNewDm() {
         if (knownUsers.isEmpty()) {
@@ -596,6 +625,7 @@ public class MainChatController implements MessageListener {
 
     private void openRoom(Room room) {
         active = new Conversation(Conversation.Kind.ROOM, room.getId(), room.getName());
+        currentRoom = room;
         if (roomUnread.remove(room.getId()) != null) roomListView.refresh();
         conversationTitle.setText("# " + room.getName());
         leaveButton.setVisible(true);
@@ -623,6 +653,7 @@ public class MainChatController implements MessageListener {
 
     private void openDm(DmEntry dm) {
         active = new Conversation(Conversation.Kind.DM, dm.userId, dm.displayName);
+        currentRoom = null;
         if (dmUnread.remove(dm.userId) != null) dmListView.refresh();
         conversationTitle.setText("@ " + dm.displayName);
         leaveButton.setVisible(false);
@@ -699,6 +730,8 @@ public class MainChatController implements MessageListener {
             case LEAVE_ROOM_RESPONSE -> onLeaveRoomResponse(message);
             case INVITE_TO_ROOM_RESPONSE -> onInviteResponse(message);
             case ADDED_TO_ROOM_NOTIFICATION -> onAddedToRoom(message);
+            case REMOVE_MEMBER_RESPONSE -> onRemoveMemberResponse(message);
+            case REMOVED_FROM_ROOM_NOTIFICATION -> onRemovedFromRoom(message);
             case LIST_ROOMS_RESPONSE -> onRoomListResponse(message, false);
             case LIST_PUBLIC_ROOMS_RESPONSE -> onRoomListResponse(message, true);
             case ROOM_MEMBERS_RESPONSE -> onRoomMembersResponse(message);
@@ -829,6 +862,38 @@ public class MainChatController implements MessageListener {
         showAlert(Alert.AlertType.INFORMATION,
                 (n.getInviterName() != null ? n.getInviterName() : "Someone")
                         + " added you to \"" + room.getName() + "\".");
+    }
+
+    private void onRemoveMemberResponse(ProtocolMessage m) {
+        RemoveMemberResponse r = JsonUtil.fromJson(m.getPayload(), RemoveMemberResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+        }
+        // On success the member panel refreshes via USER_LEFT_NOTIFICATION.
+    }
+
+    private void onRemovedFromRoom(ProtocolMessage m) {
+        RemovedFromRoomNotification n = JsonUtil.fromJson(m.getPayload(), RemovedFromRoomNotification.class);
+        rooms.removeIf(rr -> rr.getId() == n.getRoomId());
+        if (active != null && active.kind == Conversation.Kind.ROOM && active.id == n.getRoomId()) {
+            active = null;
+            currentRoom = null;
+            conversationTitle.setText("Select a room or DM");
+            leaveButton.setVisible(false);
+            leaveButton.setManaged(false);
+            inviteButton.setVisible(false);
+            inviteButton.setManaged(false);
+            membersPanel.setVisible(false);
+            membersPanel.setManaged(false);
+            clearMessages();
+            members.clear();
+            messageInput.setDisable(true);
+            attachButton.setDisable(true);
+            gifButton.setDisable(true);
+        }
+        showAlert(Alert.AlertType.INFORMATION,
+                (n.getRemoverName() != null ? n.getRemoverName() : "The owner")
+                        + " removed you from \"" + n.getRoomName() + "\".");
     }
 
     private void onUserListResponse(ProtocolMessage m) {
