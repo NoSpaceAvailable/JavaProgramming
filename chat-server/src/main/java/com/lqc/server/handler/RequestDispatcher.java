@@ -33,6 +33,7 @@ public class RequestDispatcher {
         handlers.put(MessageType.PRIVATE_MESSAGE_REQUEST, new PrivateMessageHandler());
         handlers.put(MessageType.GET_HISTORY_REQUEST, new GetHistoryHandler());
         handlers.put(MessageType.DM_HISTORY_REQUEST, new DmHistoryHandler());
+        handlers.put(MessageType.TYPING_REQUEST, new TypingHandler());
 
         handlers.put(MessageType.FILE_UPLOAD_START, new FileUploadStartHandler());
         handlers.put(MessageType.FILE_UPLOAD_CHUNK, new FileUploadChunkHandler());

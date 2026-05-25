@@ -106,6 +106,8 @@
                     </HBox>
                     <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b9bbbe; -fx-font-size: 11px;"
                            visible="false" managed="false"/>
+                    <Label fx:id="typingLabel" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-style: italic;"
+                           visible="false" managed="false"/>
                 </VBox>
             </bottom>
         </BorderPane>

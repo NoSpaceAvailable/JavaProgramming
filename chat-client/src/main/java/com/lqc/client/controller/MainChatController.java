@@ -21,6 +21,7 @@ import com.lqc.common.protocol.notification.ReactionNotification;
 import com.lqc.common.protocol.notification.RemovedFromRoomNotification;
 import com.lqc.common.protocol.notification.StatusChangeNotification;
 import com.lqc.common.protocol.notification.UserJoinedNotification;
+import com.lqc.common.protocol.notification.UserTypingNotification;
 import com.lqc.common.protocol.notification.UserLeftNotification;
 import com.lqc.common.protocol.request.*;
 import com.lqc.common.protocol.response.*;
@@ -83,6 +84,7 @@ public class MainChatController implements MessageListener {
     @FXML private Button attachButton;
     @FXML private Button gifButton;
     @FXML private Label uploadStatusLabel;
+    @FXML private Label typingLabel;
     @FXML private ComboBox<UserStatus> statusCombo;
     @FXML private VBox dropOverlay;
     @FXML private StackPane avatarPane;
@@ -146,6 +148,8 @@ public class MainChatController implements MessageListener {
 
     private Conversation active;
     private Room currentRoom; // the Room object for the currently open room (null for DMs), used for owner checks
+    private long lastTypingSentAt; // throttle outgoing TYPING_REQUESTs
+    private javafx.animation.PauseTransition typingHide; // auto-clears the "X is typing…" label
     private javafx.stage.Popup emojiPopup;
     private Image cachedAvatar;
     private final Map<Long, Image> userAvatarCache = new HashMap<>();
@@ -288,6 +292,23 @@ public class MainChatController implements MessageListener {
 
         avatarPane.setOnMouseClicked(e -> showProfileDialog());
         userBadge.setOnMouseClicked(e -> showProfileDialog());
+
+        // Typing indicator: notify the conversation (throttled to once per ~2s).
+        typingHide = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(3));
+        typingHide.setOnFinished(e -> {
+            typingLabel.setVisible(false);
+            typingLabel.setManaged(false);
+        });
+        messageInput.textProperty().addListener((obs, oldText, newText) -> {
+            if (active == null || newText == null || newText.isEmpty()) return;
+            long now = System.currentTimeMillis();
+            if (now - lastTypingSentAt < 2000) return;
+            lastTypingSentAt = now;
+            TypingRequest req = active.kind == Conversation.Kind.ROOM
+                    ? new TypingRequest(active.id, null)
+                    : new TypingRequest(null, active.id);
+            connection.send(JsonUtil.wrap(MessageType.TYPING_REQUEST, req));
+        });
     }
 
     private void onDragOver(DragEvent event) {
@@ -704,6 +725,10 @@ public class MainChatController implements MessageListener {
     private void clearMessages() {
         messagesBox.getChildren().clear();
         bubbles.clear();
+        if (typingLabel != null) {
+            typingLabel.setVisible(false);
+            typingLabel.setManaged(false);
+        }
     }
 
     private void startDm(User user) {
@@ -741,6 +766,7 @@ public class MainChatController implements MessageListener {
             case REACTION_NOTIFICATION -> onReactionNotification(message);
             case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
             case STATUS_UPDATE_RESPONSE -> onStatusUpdateResponse(message);
+            case USER_TYPING_NOTIFICATION -> onUserTyping(message);
             case USER_JOINED_NOTIFICATION -> onUserJoined(message);
             case USER_LEFT_NOTIFICATION -> onUserLeft(message);
             case UPDATE_PROFILE_RESPONSE -> onUpdateProfileResponse(message);
@@ -959,6 +985,20 @@ public class MainChatController implements MessageListener {
             dmUnread.merge(peerId, 1, Integer::sum);
             dmListView.refresh();
         }
+    }
+
+    private void onUserTyping(ProtocolMessage m) {
+        UserTypingNotification n = JsonUtil.fromJson(m.getPayload(), UserTypingNotification.class);
+        if (active == null || n.getUserId() == currentUserId) return;
+        boolean relevant = (active.kind == Conversation.Kind.ROOM
+                    && n.getRoomId() != null && n.getRoomId() == active.id)
+                || (active.kind == Conversation.Kind.DM
+                    && n.getRecipientId() != null && n.getUserId() == active.id);
+        if (!relevant) return;
+        typingLabel.setText(n.getDisplayName() + " is typing…");
+        typingLabel.setVisible(true);
+        typingLabel.setManaged(true);
+        typingHide.playFromStart();
     }
 
     private void onUserJoined(ProtocolMessage m) {
