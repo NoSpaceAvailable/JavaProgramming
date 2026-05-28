@@ -34,6 +34,7 @@ public class RequestDispatcher {
         handlers.put(MessageType.GET_HISTORY_REQUEST, new GetHistoryHandler());
         handlers.put(MessageType.DM_HISTORY_REQUEST, new DmHistoryHandler());
         handlers.put(MessageType.TYPING_REQUEST, new TypingHandler());
+        handlers.put(MessageType.SEARCH_MESSAGES_REQUEST, new SearchMessagesHandler());
 
         handlers.put(MessageType.FILE_UPLOAD_START, new FileUploadStartHandler());
         handlers.put(MessageType.FILE_UPLOAD_CHUNK, new FileUploadChunkHandler());

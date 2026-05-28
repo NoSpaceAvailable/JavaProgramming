@@ -171,6 +171,45 @@ public class MessageRepository {
         });
     }
 
+    public List<Message> searchRoomMessages(long roomId, String query, int limit) {
+        String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
+                "m.created_at, u.display_name AS sender_name " +
+                "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
+                "WHERE m.room_id = ? AND m.content ILIKE ? " +
+                "ORDER BY m.id DESC LIMIT ?";
+        String like = "%" + escapeLike(query) + "%";
+        return queryMessages(sql, stmt -> {
+            stmt.setLong(1, roomId);
+            stmt.setString(2, like);
+            stmt.setInt(3, limit);
+        });
+    }
+
+    public List<Message> searchDmMessages(long userA, long userB, String query, int limit) {
+        String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
+                "m.created_at, u.display_name AS sender_name " +
+                "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
+                "WHERE m.room_id IS NULL AND " +
+                "((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)) " +
+                "AND m.content ILIKE ? " +
+                "ORDER BY m.id DESC LIMIT ?";
+        String like = "%" + escapeLike(query) + "%";
+        return queryMessages(sql, stmt -> {
+            stmt.setLong(1, userA);
+            stmt.setLong(2, userB);
+            stmt.setLong(3, userB);
+            stmt.setLong(4, userA);
+            stmt.setString(5, like);
+            stmt.setInt(6, limit);
+        });
+    }
+
+    /** Escapes LIKE wildcards so a user's literal % or _ doesn't act as a pattern. */
+    private static String escapeLike(String raw) {
+        if (raw == null) return "";
+        return raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
     public List<long[]> getRecentDmPeerIds(long userId) {
         String sql = "SELECT sub.peer_id FROM (" +
                 "SELECT CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END AS peer_id, " +

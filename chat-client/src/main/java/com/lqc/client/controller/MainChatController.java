@@ -74,6 +74,7 @@ public class MainChatController implements MessageListener {
     @FXML private Label membersTitle;
     @FXML private Button leaveButton;
     @FXML private Button inviteButton;
+    @FXML private Button searchButton;
     @FXML private ListView<Room> roomListView;
     @FXML private ListView<DmEntry> dmListView;
     @FXML private ListView<User> memberListView;
@@ -497,6 +498,21 @@ public class MainChatController implements MessageListener {
                         new InviteToRoomRequest(roomId, u.getId()))));
     }
 
+    @FXML
+    private void handleSearchMessages() {
+        if (active == null) return;
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Search messages");
+        dialog.setHeaderText("Search in " + (active.kind == Conversation.Kind.ROOM ? "#" : "@") + active.title);
+        dialog.setContentText("Find:");
+        dialog.showAndWait().map(String::trim).filter(q -> !q.isEmpty()).ifPresent(query -> {
+            SearchMessagesRequest req = active.kind == Conversation.Kind.ROOM
+                    ? new SearchMessagesRequest(active.id, null, query)
+                    : new SearchMessagesRequest(null, active.id, query);
+            connection.send(JsonUtil.wrap(MessageType.SEARCH_MESSAGES_REQUEST, req));
+        });
+    }
+
     private void confirmRemoveMember(long userId, String displayName) {
         if (active == null || active.kind != Conversation.Kind.ROOM) return;
         long roomId = active.id;
@@ -653,6 +669,8 @@ public class MainChatController implements MessageListener {
         leaveButton.setManaged(true);
         inviteButton.setVisible(true);
         inviteButton.setManaged(true);
+        searchButton.setVisible(true);
+        searchButton.setManaged(true);
         membersPanel.setVisible(true);
         membersPanel.setManaged(true);
         membersTitle.setText("MEMBERS");
@@ -681,6 +699,8 @@ public class MainChatController implements MessageListener {
         leaveButton.setManaged(false);
         inviteButton.setVisible(false);
         inviteButton.setManaged(false);
+        searchButton.setVisible(true);
+        searchButton.setManaged(true);
         membersPanel.setVisible(false);
         membersPanel.setManaged(false);
         messageInput.setDisable(false);
@@ -762,6 +782,7 @@ public class MainChatController implements MessageListener {
             case ROOM_MEMBERS_RESPONSE -> onRoomMembersResponse(message);
             case LIST_USERS_RESPONSE -> onUserListResponse(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
+            case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
             case NEW_MESSAGE_NOTIFICATION -> onNewMessage(message);
             case REACTION_NOTIFICATION -> onReactionNotification(message);
             case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
@@ -815,11 +836,14 @@ public class MainChatController implements MessageListener {
         rooms.removeIf(rr -> rr.getId() == r.getRoomId());
         if (active != null && active.kind == Conversation.Kind.ROOM && active.id == r.getRoomId()) {
             active = null;
+            currentRoom = null;
             conversationTitle.setText("Select a room or DM");
             leaveButton.setVisible(false);
             leaveButton.setManaged(false);
             inviteButton.setVisible(false);
             inviteButton.setManaged(false);
+            searchButton.setVisible(false);
+            searchButton.setManaged(false);
             clearMessages();
             messageInput.setDisable(true);
             attachButton.setDisable(true);
@@ -909,6 +933,8 @@ public class MainChatController implements MessageListener {
             leaveButton.setManaged(false);
             inviteButton.setVisible(false);
             inviteButton.setManaged(false);
+            searchButton.setVisible(false);
+            searchButton.setManaged(false);
             membersPanel.setVisible(false);
             membersPanel.setManaged(false);
             clearMessages();
@@ -920,6 +946,61 @@ public class MainChatController implements MessageListener {
         showAlert(Alert.AlertType.INFORMATION,
                 (n.getRemoverName() != null ? n.getRemoverName() : "The owner")
                         + " removed you from \"" + n.getRoomName() + "\".");
+    }
+
+    private void onSearchResponse(ProtocolMessage m) {
+        SearchMessagesResponse r = JsonUtil.fromJson(m.getPayload(), SearchMessagesResponse.class);
+        List<Message> results = r.getResults() == null ? List.of() : r.getResults();
+        if (results.isEmpty()) {
+            showAlert(Alert.AlertType.INFORMATION, "No messages found for \"" + r.getQuery() + "\".");
+            return;
+        }
+
+        ListView<Message> list = new ListView<>();
+        list.getItems().setAll(results);
+        list.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(Message msg, boolean empty) {
+                super.updateItem(msg, empty);
+                if (empty || msg == null) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                String when = msg.getCreatedAt() != null
+                        ? msg.getCreatedAt().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                        : "";
+                Label header = new Label(msg.getSenderName() + "  •  " + when);
+                header.setStyle("-fx-text-fill: #7289da; -fx-font-size: 11px; -fx-font-weight: bold;");
+                String body = msg.getContent() == null ? "" : msg.getContent();
+                if (msg.getMessageType() != null && msg.getMessageType() != Message.MessageType.TEXT) {
+                    body = "[" + msg.getMessageType() + "] " + body;
+                }
+                Label content = new Label(body);
+                content.setWrapText(true);
+                content.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                VBox box = new VBox(2, header, content);
+                box.setStyle("-fx-padding: 6 4 6 4;");
+                setGraphic(box);
+                setText(null);
+            }
+        });
+
+        Label title = new Label(results.size() + " result(s) for \"" + r.getQuery() + "\"");
+        title.setStyle("-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 8;");
+        VBox root = new VBox(title, list);
+        VBox.setVgrow(list, javafx.scene.layout.Priority.ALWAYS);
+        root.setStyle("-fx-background-color: #36393f;");
+
+        javafx.scene.Scene scene = new javafx.scene.Scene(root, 460, 520);
+        var css = getClass().getResource("/css/dark-theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+
+        javafx.stage.Stage stage = new javafx.stage.Stage();
+        stage.setTitle("Search results");
+        stage.initModality(javafx.stage.Modality.NONE);
+        stage.setScene(scene);
+        stage.show();
     }
 
     private void onUserListResponse(ProtocolMessage m) {

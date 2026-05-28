@@ -51,6 +51,14 @@ public class MessageService {
         return r;
     }
 
+    public List<Message> searchRoom(long roomId, String query, int limit) {
+        return messageRepository.searchRoomMessages(roomId, query, limit);
+    }
+
+    public List<Message> searchDm(long currentUserId, long peerUserId, String query, int limit) {
+        return messageRepository.searchDmMessages(currentUserId, peerUserId, query, limit);
+    }
+
     private void broadcastRoomMessage(long roomId, Message m) {
         NewMessageNotification notif = buildNotification(m);
         SessionManager sessions = SessionManager.getInstance();
