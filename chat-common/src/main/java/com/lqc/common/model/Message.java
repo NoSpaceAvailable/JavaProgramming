@@ -14,6 +14,7 @@ public class Message {
     private LocalDateTime createdAt;
     private FileAttachment attachment;
     private List<Reaction> reactions;
+    private boolean edited;
 
     public enum MessageType {
         TEXT, FILE, SYSTEM, GIF
@@ -57,4 +58,7 @@ public class Message {
 
     public List<Reaction> getReactions() { return reactions; }
     public void setReactions(List<Reaction> reactions) { this.reactions = reactions; }
+
+    public boolean isEdited() { return edited; }
+    public void setEdited(boolean edited) { this.edited = edited; }
 }

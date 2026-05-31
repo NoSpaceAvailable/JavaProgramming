@@ -36,10 +36,13 @@ CREATE TABLE IF NOT EXISTS messages (
     recipient_id BIGINT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL,
     content TEXT NOT NULL,
     message_type VARCHAR(10) NOT NULL DEFAULT 'TEXT',
+    edited BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_private ON messages(sender_id, recipient_id, created_at DESC);
+-- Idempotent migration for databases created before the 'edited' column existed.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS file_attachments (
     id BIGSERIAL PRIMARY KEY,

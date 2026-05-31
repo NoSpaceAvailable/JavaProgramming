@@ -16,6 +16,8 @@ import com.lqc.common.model.UserStatus;
 import com.lqc.common.protocol.MessageType;
 import com.lqc.common.protocol.ProtocolMessage;
 import com.lqc.common.protocol.notification.AddedToRoomNotification;
+import com.lqc.common.protocol.notification.MessageDeletedNotification;
+import com.lqc.common.protocol.notification.MessageEditedNotification;
 import com.lqc.common.protocol.notification.NewMessageNotification;
 import com.lqc.common.protocol.notification.ReactionNotification;
 import com.lqc.common.protocol.notification.RemovedFromRoomNotification;
@@ -783,6 +785,16 @@ public class MainChatController implements MessageListener {
             case LIST_USERS_RESPONSE -> onUserListResponse(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
+            case MESSAGE_EDITED_NOTIFICATION -> onMessageEdited(message);
+            case MESSAGE_DELETED_NOTIFICATION -> onMessageDeleted(message);
+            case EDIT_MESSAGE_RESPONSE -> {
+                EditMessageResponse r = JsonUtil.fromJson(message.getPayload(), EditMessageResponse.class);
+                if (!r.isSuccess()) showAlert(Alert.AlertType.ERROR, r.getMessage());
+            }
+            case DELETE_MESSAGE_RESPONSE -> {
+                DeleteMessageResponse r = JsonUtil.fromJson(message.getPayload(), DeleteMessageResponse.class);
+                if (!r.isSuccess()) showAlert(Alert.AlertType.ERROR, r.getMessage());
+            }
             case NEW_MESSAGE_NOTIFICATION -> onNewMessage(message);
             case REACTION_NOTIFICATION -> onReactionNotification(message);
             case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
@@ -946,6 +958,18 @@ public class MainChatController implements MessageListener {
         showAlert(Alert.AlertType.INFORMATION,
                 (n.getRemoverName() != null ? n.getRemoverName() : "The owner")
                         + " removed you from \"" + n.getRoomName() + "\".");
+    }
+
+    private void onMessageEdited(ProtocolMessage m) {
+        MessageEditedNotification n = JsonUtil.fromJson(m.getPayload(), MessageEditedNotification.class);
+        MessageBubble bubble = bubbles.get(n.getMessageId());
+        if (bubble != null) bubble.applyEdit(n.getContent());
+    }
+
+    private void onMessageDeleted(ProtocolMessage m) {
+        MessageDeletedNotification n = JsonUtil.fromJson(m.getPayload(), MessageDeletedNotification.class);
+        MessageBubble bubble = bubbles.remove(n.getMessageId());
+        if (bubble != null) messagesBox.getChildren().remove(bubble.root);
     }
 
     private void onSearchResponse(ProtocolMessage m) {
@@ -1328,10 +1352,16 @@ public class MainChatController implements MessageListener {
         Label timeLabel = new Label(formatTime(timestamp));
         timeLabel.getStyleClass().add("timestamp");
 
-        HBox header = new HBox(8, nameLabel, timeLabel);
+        Label editedMarker = new Label("(edited)");
+        editedMarker.setStyle("-fx-text-fill: #72767d; -fx-font-size: 10px;");
+        editedMarker.setVisible(m.isEdited());
+        editedMarker.setManaged(m.isEdited());
+
+        HBox header = new HBox(8, nameLabel, timeLabel, editedMarker);
         header.setAlignment(Pos.BASELINE_LEFT);
 
         Node body;
+        Label textLabel = null;
         if (m.getMessageType() == Message.MessageType.GIF && m.getContent() != null && !m.getContent().isBlank()) {
             body = renderGifMessage(m.getContent());
         } else if (m.getAttachment() != null) {
@@ -1342,6 +1372,7 @@ public class MainChatController implements MessageListener {
             text.setWrapText(true);
             text.setMaxWidth(Double.MAX_VALUE);
             body = text;
+            textLabel = text;
         }
 
         FlowPane reactionRow = new FlowPane(6, 4);
@@ -1357,14 +1388,54 @@ public class MainChatController implements MessageListener {
         container.setStyle("-fx-padding: 4 16 4 16;");
 
         MessageBubble bubble = new MessageBubble(container, reactionRow, m.getId());
+        bubble.senderId = m.getSenderId();
+        bubble.textLabel = textLabel;
+        bubble.editedMarker = editedMarker;
         bubble.replaceReactions(m.getReactions());
 
+        boolean isOwn = m.getSenderId() == currentUserId;
+        boolean editable = isOwn && textLabel != null; // only own TEXT messages can be edited
         container.setOnMouseClicked(ev -> {
-            if (ev.getButton() == MouseButton.SECONDARY) {
+            if (ev.getButton() != MouseButton.SECONDARY) return;
+            if (!isOwn) {
                 showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY());
+                return;
             }
+            // Own message: offer React + Edit/Delete.
+            ContextMenu menu = new ContextMenu();
+            MenuItem react = new MenuItem("Add reaction…");
+            react.setOnAction(e -> showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY()));
+            menu.getItems().add(react);
+            if (editable) {
+                MenuItem edit = new MenuItem("Edit");
+                edit.setOnAction(e -> handleEditMessage(bubble));
+                menu.getItems().add(edit);
+            }
+            MenuItem delete = new MenuItem("Delete");
+            delete.setOnAction(e -> handleDeleteMessage(bubble.messageId));
+            menu.getItems().add(delete);
+            menu.show(container, ev.getScreenX(), ev.getScreenY());
         });
         return bubble;
+    }
+
+    private void handleEditMessage(MessageBubble bubble) {
+        if (bubble.textLabel == null) return;
+        TextInputDialog dialog = new TextInputDialog(bubble.textLabel.getText());
+        dialog.setTitle("Edit message");
+        dialog.setHeaderText("Edit your message");
+        dialog.setContentText("Message:");
+        dialog.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).ifPresent(content ->
+                connection.send(JsonUtil.wrap(MessageType.EDIT_MESSAGE_REQUEST,
+                        new EditMessageRequest(bubble.messageId, content))));
+    }
+
+    private void handleDeleteMessage(long messageId) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Delete this message?", ButtonType.OK, ButtonType.CANCEL);
+        confirm.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b ->
+                connection.send(JsonUtil.wrap(MessageType.DELETE_MESSAGE_REQUEST,
+                        new DeleteMessageRequest(messageId))));
     }
 
     private Node renderGifMessage(String gifUrl) {
@@ -1634,11 +1705,22 @@ public class MainChatController implements MessageListener {
         final long messageId;
         final Map<String, java.util.LinkedHashSet<Long>> reactions = new LinkedHashMap<>();
         final Map<String, Button> badges = new LinkedHashMap<>();
+        long senderId;
+        Label textLabel;      // non-null only for editable TEXT messages
+        Label editedMarker;   // faint "(edited)" label in the header
 
         MessageBubble(Node root, FlowPane reactionRow, long messageId) {
             this.root = root;
             this.reactionRow = reactionRow;
             this.messageId = messageId;
+        }
+
+        void applyEdit(String content) {
+            if (textLabel != null) textLabel.setText(content);
+            if (editedMarker != null) {
+                editedMarker.setVisible(true);
+                editedMarker.setManaged(true);
+            }
         }
 
         void replaceReactions(List<Reaction> seed) {

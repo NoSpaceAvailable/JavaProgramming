@@ -2,6 +2,9 @@ package com.lqc.server.service;
 
 import com.lqc.common.model.Message;
 import com.lqc.common.protocol.MessageType;
+import com.lqc.common.protocol.ProtocolMessage;
+import com.lqc.common.protocol.notification.MessageDeletedNotification;
+import com.lqc.common.protocol.notification.MessageEditedNotification;
 import com.lqc.common.protocol.notification.NewMessageNotification;
 import com.lqc.common.protocol.response.MessageHistoryResponse;
 import com.lqc.common.util.JsonUtil;
@@ -13,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Optional;
 
 public class MessageService {
     private static final Logger logger = LoggerFactory.getLogger(MessageService.class);
@@ -49,6 +53,49 @@ public class MessageService {
         List<Message> msgs = messageRepository.getDmHistory(currentUserId, peerUserId, beforeMessageId, limit);
         MessageHistoryResponse r = new MessageHistoryResponse(0L, msgs, msgs.size() == limit);
         return r;
+    }
+
+    /** Edits a text message's content (sender only) and broadcasts the change. */
+    public boolean editMessage(long messageId, long senderId, String content) {
+        Optional<Message> opt = messageRepository.findById(messageId);
+        if (opt.isEmpty()) return false;
+        Message m = opt.get();
+        if (m.getSenderId() != senderId) return false;
+        if (m.getMessageType() != null && m.getMessageType() != Message.MessageType.TEXT) return false;
+        if (!messageRepository.updateContent(messageId, senderId, content)) return false;
+        MessageEditedNotification n = new MessageEditedNotification(
+                messageId, m.getRoomId(), m.getRecipientId(), content);
+        broadcastToScope(m, JsonUtil.wrap(MessageType.MESSAGE_EDITED_NOTIFICATION, n));
+        return true;
+    }
+
+    /** Deletes a message (sender only) and broadcasts the removal. */
+    public boolean deleteMessage(long messageId, long senderId) {
+        Optional<Message> opt = messageRepository.findById(messageId);
+        if (opt.isEmpty()) return false;
+        Message m = opt.get();
+        if (m.getSenderId() != senderId) return false;
+        if (!messageRepository.delete(messageId, senderId)) return false;
+        MessageDeletedNotification n = new MessageDeletedNotification(
+                messageId, m.getRoomId(), m.getRecipientId());
+        broadcastToScope(m, JsonUtil.wrap(MessageType.MESSAGE_DELETED_NOTIFICATION, n));
+        return true;
+    }
+
+    /** Sends {@code out} to everyone in the message's conversation (room members, or DM pair). */
+    private void broadcastToScope(Message m, ProtocolMessage out) {
+        SessionManager sessions = SessionManager.getInstance();
+        if (m.getRoomId() != null) {
+            for (Long memberId : roomRepository.getMemberIds(m.getRoomId())) {
+                ClientHandler h = sessions.getSession(memberId);
+                if (h != null && h.isConnected()) h.sendMessage(out);
+            }
+        } else if (m.getRecipientId() != null) {
+            for (long uid : new long[]{m.getSenderId(), m.getRecipientId()}) {
+                ClientHandler h = sessions.getSession(uid);
+                if (h != null && h.isConnected()) h.sendMessage(out);
+            }
+        }
     }
 
     public List<Message> searchRoom(long roomId, String query, int limit) {

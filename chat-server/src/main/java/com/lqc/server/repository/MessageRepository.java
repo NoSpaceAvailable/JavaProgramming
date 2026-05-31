@@ -23,7 +23,7 @@ public class MessageRepository {
 
     public Optional<Message> findById(long messageId) {
         String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
-                "m.created_at, u.display_name AS sender_name " +
+                "m.edited, m.created_at, u.display_name AS sender_name " +
                 "FROM messages m INNER JOIN users u ON m.sender_id = u.id WHERE m.id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -140,7 +140,7 @@ public class MessageRepository {
 
     public List<Message> getRoomHistory(long roomId, long beforeMessageId, int limit) {
         String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
-                "m.created_at, u.display_name AS sender_name " +
+                "m.edited, m.created_at, u.display_name AS sender_name " +
                 "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
                 "WHERE m.room_id = ? AND (? = 0 OR m.id < ?) " +
                 "ORDER BY m.id DESC LIMIT ?";
@@ -154,7 +154,7 @@ public class MessageRepository {
 
     public List<Message> getDmHistory(long userA, long userB, long beforeMessageId, int limit) {
         String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
-                "m.created_at, u.display_name AS sender_name " +
+                "m.edited, m.created_at, u.display_name AS sender_name " +
                 "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
                 "WHERE m.room_id IS NULL AND " +
                 "((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)) " +
@@ -171,9 +171,38 @@ public class MessageRepository {
         });
     }
 
+    /** Updates a message's content (and marks it edited) only if owned by {@code senderId}. */
+    public boolean updateContent(long messageId, long senderId, String content) {
+        String sql = "UPDATE messages SET content = ?, edited = TRUE WHERE id = ? AND sender_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, content);
+            stmt.setLong(2, messageId);
+            stmt.setLong(3, senderId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.error("Error editing message {}", messageId, e);
+            return false;
+        }
+    }
+
+    /** Deletes a message only if owned by {@code senderId}. Reactions/attachments cascade. */
+    public boolean delete(long messageId, long senderId) {
+        String sql = "DELETE FROM messages WHERE id = ? AND sender_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, messageId);
+            stmt.setLong(2, senderId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.error("Error deleting message {}", messageId, e);
+            return false;
+        }
+    }
+
     public List<Message> searchRoomMessages(long roomId, String query, int limit) {
         String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
-                "m.created_at, u.display_name AS sender_name " +
+                "m.edited, m.created_at, u.display_name AS sender_name " +
                 "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
                 "WHERE m.room_id = ? AND m.content ILIKE ? " +
                 "ORDER BY m.id DESC LIMIT ?";
@@ -187,7 +216,7 @@ public class MessageRepository {
 
     public List<Message> searchDmMessages(long userA, long userB, String query, int limit) {
         String sql = "SELECT m.id, m.room_id, m.sender_id, m.recipient_id, m.content, m.message_type, " +
-                "m.created_at, u.display_name AS sender_name " +
+                "m.edited, m.created_at, u.display_name AS sender_name " +
                 "FROM messages m INNER JOIN users u ON m.sender_id = u.id " +
                 "WHERE m.room_id IS NULL AND " +
                 "((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)) " +
@@ -287,6 +316,7 @@ public class MessageRepository {
         }
         Timestamp t = rs.getTimestamp("created_at");
         if (t != null) m.setCreatedAt(t.toLocalDateTime());
+        m.setEdited(rs.getBoolean("edited"));
         return m;
     }
 }
