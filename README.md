@@ -11,11 +11,11 @@
 
 **Nhóm 26**
 
-| STT | Họ và tên |
-|-----|-----------|
-| 1 | Ngô Phúc Dương |
-| 2 | Hoàng Xuân Vinh |
-| 3 | Lê Quốc Cường |
+| STT | MSSV | Họ và tên |
+|-----|----------|-----------|
+| 1 | 23520350 | Ngô Phúc Dương |
+| 2 | 23521789 | Hoàng Xuân Vinh |
+| 3 | 23520197 | Lê Quốc Cường |
 
 ---
 
