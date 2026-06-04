@@ -5,7 +5,7 @@
 <?import javafx.scene.layout.*?>
 
 <StackPane xmlns:fx="http://javafx.com/fxml" styleClass="auth-wrapper"
-           fx:controller="com.lqc.client.controller.RegisterController">
+           fx:controller="com.micord.client.controller.RegisterController">
 
     <VBox styleClass="auth-card" maxWidth="420" maxHeight="600" spacing="8" alignment="CENTER">
 

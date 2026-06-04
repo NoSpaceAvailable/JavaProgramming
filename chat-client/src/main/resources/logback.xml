@@ -6,7 +6,7 @@
         </encoder>
     </appender>
 
-    <logger name="com.lqc.client" level="DEBUG"/>
+    <logger name="com.micord.client" level="DEBUG"/>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>

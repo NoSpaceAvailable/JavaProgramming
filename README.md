@@ -126,7 +126,7 @@ JavaProgramming/
 ├── TRACKING.md              (theo dõi tiến độ các giai đoạn)
 │
 ├── chat-common/             Module dùng chung
-│   └── src/main/java/com/lqc/common/
+│   └── src/main/java/com/micord/common/
 │       ├── model/           User, Room, Message, Reaction, FileAttachment, UserStatus
 │       ├── protocol/        ProtocolMessage, MessageType
 │       │   ├── request/     Các DTO yêu cầu (Login, CreateRoom, SendMessage, ...)
@@ -136,7 +136,7 @@ JavaProgramming/
 │
 ├── chat-server/             Module máy chủ
 │   └── src/main/
-│       ├── java/com/lqc/server/
+│       ├── java/com/micord/server/
 │       │   ├── ChatServer.java       (điểm khởi động)
 │       │   ├── ClientHandler.java    (xử lý kết nối từng client)
 │       │   ├── handler/              (các handler xử lý yêu cầu + RequestDispatcher)
@@ -149,7 +149,7 @@ JavaProgramming/
 │
 └── chat-client/             Module giao diện (JavaFX)
     └── src/main/
-        ├── java/com/lqc/client/
+        ├── java/com/micord/client/
         │   ├── ChatClientApp.java    (lớp Application của JavaFX)
         │   ├── Launcher.java         (điểm khởi động)
         │   ├── controller/           (Login, Register, MainChat)
@@ -292,7 +292,7 @@ Yêu cầu đã cài và cấu hình PostgreSQL như mục [9.2](#92-cài-đặt
 
 ```bash
 cd chat-server
-mvn exec:java "-Dexec.mainClass=com.lqc.server.ChatServer" "-Duser.timezone=UTC"
+mvn exec:java "-Dexec.mainClass=com.micord.server.ChatServer" "-Duser.timezone=UTC"
 ```
 
 Khi thành công, bạn sẽ thấy:
