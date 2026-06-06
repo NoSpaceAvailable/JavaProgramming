@@ -124,6 +124,9 @@ JavaProgramming/
 ├── pom.xml                  (POM cha — quản lý phiên bản & module)
 ├── README.md
 ├── TRACKING.md              (theo dõi tiến độ các giai đoạn)
+├── Dockerfile               (build server thành fat-jar + image JRE để chạy)
+├── docker-compose.yml       (dựng PostgreSQL + chat-server)
+├── .dockerignore            (loại trừ target/, .git/, ... khỏi build context)
 │
 ├── chat-common/             Module dùng chung
 │   └── src/main/java/com/micord/common/
