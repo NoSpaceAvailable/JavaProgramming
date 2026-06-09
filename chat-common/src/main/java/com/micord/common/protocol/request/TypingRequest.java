@@ -7,12 +7,14 @@ package com.micord.common.protocol.request;
 public class TypingRequest {
     private Long roomId;
     private Long recipientId;
+    private boolean typing;
 
     public TypingRequest() {}
 
-    public TypingRequest(Long roomId, Long recipientId) {
+    public TypingRequest(Long roomId, Long recipientId, boolean typing) {
         this.roomId = roomId;
         this.recipientId = recipientId;
+        this.typing = typing;
     }
 
     public Long getRoomId() { return roomId; }
@@ -20,4 +22,7 @@ public class TypingRequest {
 
     public Long getRecipientId() { return recipientId; }
     public void setRecipientId(Long recipientId) { this.recipientId = recipientId; }
+
+    public boolean isTyping() { return typing; }
+    public void setTyping(boolean typing) { this.typing = typing; }
 }

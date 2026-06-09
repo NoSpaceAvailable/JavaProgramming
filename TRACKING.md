@@ -82,6 +82,7 @@
 - [x] Graceful disconnect handling (ServerConnection disconnect listener, "Disconnected" label)
 - [x] Input validation (length + emptiness checks on send / register / room create)
 - [x] Unread message badges on rooms and DMs
+- [x] Typing indicators on active rooms and DMs
 - [x] Formatted timestamps (Today HH:mm / Yesterday HH:mm / MMM d HH:mm)
 - [x] System messages on join/leave
 - [x] Unit tests (AuthServiceTest — 7 cases, surefire 3.2.5)

@@ -106,9 +106,9 @@
                         <TextField fx:id="messageInput" styleClass="message-input" HBox.hgrow="ALWAYS"
                                    promptText="Send a message..." onAction="#handleSendMessage" disable="true"/>
                     </HBox>
-                    <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b9bbbe; -fx-font-size: 11px;"
+                    <Label fx:id="typingLabel" style="-fx-text-fill: #8e9297; -fx-font-size: 11px;"
                            visible="false" managed="false"/>
-                    <Label fx:id="typingLabel" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-style: italic;"
+                    <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b9bbbe; -fx-font-size: 11px;"
                            visible="false" managed="false"/>
                 </VBox>
             </bottom>

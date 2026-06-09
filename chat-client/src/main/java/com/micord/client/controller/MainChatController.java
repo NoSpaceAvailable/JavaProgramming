@@ -28,6 +28,7 @@ import com.micord.common.protocol.notification.UserLeftNotification;
 import com.micord.common.protocol.request.*;
 import com.micord.common.protocol.response.*;
 import com.micord.common.util.JsonUtil;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -49,6 +50,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 
 import java.awt.Desktop;
 import java.io.File;
@@ -67,6 +69,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class MainChatController implements MessageListener {
 
@@ -86,8 +89,8 @@ public class MainChatController implements MessageListener {
     @FXML private TextField messageInput;
     @FXML private Button attachButton;
     @FXML private Button gifButton;
-    @FXML private Label uploadStatusLabel;
     @FXML private Label typingLabel;
+    @FXML private Label uploadStatusLabel;
     @FXML private ComboBox<UserStatus> statusCombo;
     @FXML private VBox dropOverlay;
     @FXML private StackPane avatarPane;
@@ -117,7 +120,11 @@ public class MainChatController implements MessageListener {
     private final Map<Long, Integer> dmUnread = new HashMap<>();
     // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
     private final Map<Long, UserStatus> userStatuses = new HashMap<>();
+    private final Map<Long, String> activeTypingUsers = new LinkedHashMap<>();
+    private final Map<Long, PauseTransition> typingExpiryTimers = new HashMap<>();
+    private final PauseTransition localTypingIdleTimer = new PauseTransition(Duration.seconds(1.4));
     private boolean suppressStatusEvents;
+    private boolean localTyping;
 
     private static final List<String> EMOJI_PALETTE = List.of(
             "👍", "❤️", "😂", "🎉", "😀",
@@ -151,8 +158,6 @@ public class MainChatController implements MessageListener {
 
     private Conversation active;
     private Room currentRoom; // the Room object for the currently open room (null for DMs), used for owner checks
-    private long lastTypingSentAt; // throttle outgoing TYPING_REQUESTs
-    private javafx.animation.PauseTransition typingHide; // auto-clears the "X is typing…" label
     private javafx.stage.Popup emojiPopup;
     private Image cachedAvatar;
     private final Map<Long, Image> userAvatarCache = new HashMap<>();
@@ -296,21 +301,16 @@ public class MainChatController implements MessageListener {
         avatarPane.setOnMouseClicked(e -> showProfileDialog());
         userBadge.setOnMouseClicked(e -> showProfileDialog());
 
-        // Typing indicator: notify the conversation (throttled to once per ~2s).
-        typingHide = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(3));
-        typingHide.setOnFinished(e -> {
-            typingLabel.setVisible(false);
-            typingLabel.setManaged(false);
-        });
-        messageInput.textProperty().addListener((obs, oldText, newText) -> {
-            if (active == null || newText == null || newText.isEmpty()) return;
-            long now = System.currentTimeMillis();
-            if (now - lastTypingSentAt < 2000) return;
-            lastTypingSentAt = now;
-            TypingRequest req = active.kind == Conversation.Kind.ROOM
-                    ? new TypingRequest(active.id, null)
-                    : new TypingRequest(null, active.id);
-            connection.send(JsonUtil.wrap(MessageType.TYPING_REQUEST, req));
+        localTypingIdleTimer.setOnFinished(e -> sendTypingState(false));
+        messageInput.textProperty().addListener((obs, oldV, newV) -> {
+            if (active == null || messageInput.isDisabled()) return;
+            if (newV != null && !newV.isBlank()) {
+                sendTypingState(true);
+                localTypingIdleTimer.playFromStart();
+            } else {
+                localTypingIdleTimer.stop();
+                sendTypingState(false);
+            }
         });
     }
 
@@ -555,6 +555,7 @@ public class MainChatController implements MessageListener {
         String text = messageInput.getText();
         if (text == null || text.trim().isEmpty() || active == null) return;
         text = text.trim();
+        sendTypingState(false);
         if (active.kind == Conversation.Kind.ROOM) {
             connection.send(JsonUtil.wrap(MessageType.SEND_MESSAGE_REQUEST,
                     new SendMessageRequest(active.id, text)));
@@ -644,6 +645,7 @@ public class MainChatController implements MessageListener {
 
     @FXML
     private void handleLogout() {
+        sendTypingState(false);
         connection.removeListener(this);
         connection.removeDisconnectListener(disconnectHandler);
         connection.disconnect();
@@ -663,6 +665,7 @@ public class MainChatController implements MessageListener {
     // ---- Conversation switching ----
 
     private void openRoom(Room room) {
+        sendTypingState(false);
         active = new Conversation(Conversation.Kind.ROOM, room.getId(), room.getName());
         currentRoom = room;
         if (roomUnread.remove(room.getId()) != null) roomListView.refresh();
@@ -686,6 +689,7 @@ public class MainChatController implements MessageListener {
         headerStatusLabel.setVisible(false);
         headerStatusLabel.setManaged(false);
         clearMessages();
+        clearTypingIndicator();
         connection.send(JsonUtil.wrap(MessageType.GET_HISTORY_REQUEST,
                 new GetHistoryRequest(room.getId(), 0, 50)));
         connection.send(JsonUtil.wrap(MessageType.ROOM_MEMBERS_REQUEST,
@@ -693,6 +697,7 @@ public class MainChatController implements MessageListener {
     }
 
     private void openDm(DmEntry dm) {
+        sendTypingState(false);
         active = new Conversation(Conversation.Kind.DM, dm.userId, dm.displayName);
         currentRoom = null;
         if (dmUnread.remove(dm.userId) != null) dmListView.refresh();
@@ -711,6 +716,7 @@ public class MainChatController implements MessageListener {
         messageInput.setPromptText("Message @" + dm.displayName);
         updateDmHeader(dm.userId, dm.displayName);
         clearMessages();
+        clearTypingIndicator();
         connection.send(JsonUtil.wrap(MessageType.DM_HISTORY_REQUEST,
                 new DmHistoryRequest(dm.userId, 0, 50)));
     }
@@ -798,8 +804,8 @@ public class MainChatController implements MessageListener {
             case NEW_MESSAGE_NOTIFICATION -> onNewMessage(message);
             case REACTION_NOTIFICATION -> onReactionNotification(message);
             case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
+            case USER_TYPING_NOTIFICATION -> onTypingNotification(message);
             case STATUS_UPDATE_RESPONSE -> onStatusUpdateResponse(message);
-            case USER_TYPING_NOTIFICATION -> onUserTyping(message);
             case USER_JOINED_NOTIFICATION -> onUserJoined(message);
             case USER_LEFT_NOTIFICATION -> onUserLeft(message);
             case UPDATE_PROFILE_RESPONSE -> onUpdateProfileResponse(message);
@@ -857,9 +863,10 @@ public class MainChatController implements MessageListener {
             searchButton.setVisible(false);
             searchButton.setManaged(false);
             clearMessages();
+            clearTypingIndicator();
             messageInput.setDisable(true);
             attachButton.setDisable(true);
-        gifButton.setDisable(true);
+            gifButton.setDisable(true);
             members.clear();
         }
     }
@@ -1058,6 +1065,9 @@ public class MainChatController implements MessageListener {
 
     private void onNewMessage(ProtocolMessage m) {
         NewMessageNotification n = JsonUtil.fromJson(m.getPayload(), NewMessageNotification.class);
+        if (matchesActiveConversation(n)) {
+            removeTypingUser(n.getSenderId());
+        }
         boolean isRoom = n.getRoomId() != null && n.getRoomId() > 0;
         if (isRoom) {
             boolean isActive = active != null && active.kind == Conversation.Kind.ROOM
@@ -1090,20 +1100,6 @@ public class MainChatController implements MessageListener {
             dmUnread.merge(peerId, 1, Integer::sum);
             dmListView.refresh();
         }
-    }
-
-    private void onUserTyping(ProtocolMessage m) {
-        UserTypingNotification n = JsonUtil.fromJson(m.getPayload(), UserTypingNotification.class);
-        if (active == null || n.getUserId() == currentUserId) return;
-        boolean relevant = (active.kind == Conversation.Kind.ROOM
-                    && n.getRoomId() != null && n.getRoomId() == active.id)
-                || (active.kind == Conversation.Kind.DM
-                    && n.getRecipientId() != null && n.getUserId() == active.id);
-        if (!relevant) return;
-        typingLabel.setText(n.getDisplayName() + " is typing…");
-        typingLabel.setVisible(true);
-        typingLabel.setManaged(true);
-        typingHide.playFromStart();
     }
 
     private void onUserJoined(ProtocolMessage m) {
@@ -1152,6 +1148,86 @@ public class MainChatController implements MessageListener {
         MessageBubble bubble = bubbles.get(n.getMessageId());
         if (bubble == null) return;
         bubble.applyReaction(n);
+    }
+
+    private void onTypingNotification(ProtocolMessage m) {
+        UserTypingNotification n = JsonUtil.fromJson(m.getPayload(), UserTypingNotification.class);
+        if (n.getSenderId() == currentUserId || !matchesActiveConversation(n)) return;
+        if (n.isTyping()) {
+            activeTypingUsers.put(n.getSenderId(), n.getSenderName());
+            PauseTransition timer = typingExpiryTimers.computeIfAbsent(n.getSenderId(),
+                    ignored -> new PauseTransition(Duration.seconds(3)));
+            timer.setOnFinished(e -> removeTypingUser(n.getSenderId()));
+            timer.playFromStart();
+        } else {
+            removeTypingUser(n.getSenderId());
+        }
+        refreshTypingLabel();
+    }
+
+    private boolean matchesActiveConversation(UserTypingNotification n) {
+        if (active == null) return false;
+        if (active.kind == Conversation.Kind.ROOM) {
+            return n.getRoomId() != null && n.getRoomId() == active.id;
+        }
+        return n.getRecipientId() != null && n.getRecipientId() == currentUserId && n.getSenderId() == active.id;
+    }
+
+    private boolean matchesActiveConversation(NewMessageNotification n) {
+        if (active == null) return false;
+        if (active.kind == Conversation.Kind.ROOM) {
+            return n.getRoomId() != null && n.getRoomId() == active.id;
+        }
+        long peerId = n.getSenderId() == currentUserId
+                ? (n.getRecipientId() != null ? n.getRecipientId() : 0)
+                : n.getSenderId();
+        return peerId == active.id;
+    }
+
+    private void sendTypingState(boolean typing) {
+        if (active == null || localTyping == typing || !connection.isConnected()) return;
+        localTyping = typing;
+        Long roomId = active.kind == Conversation.Kind.ROOM ? active.id : null;
+        Long recipientId = active.kind == Conversation.Kind.DM ? active.id : null;
+        connection.send(JsonUtil.wrap(MessageType.TYPING_REQUEST,
+                new TypingRequest(roomId, recipientId, typing)));
+    }
+
+    private void removeTypingUser(long userId) {
+        activeTypingUsers.remove(userId);
+        PauseTransition timer = typingExpiryTimers.remove(userId);
+        if (timer != null) timer.stop();
+        refreshTypingLabel();
+    }
+
+    private void clearTypingIndicator() {
+        activeTypingUsers.clear();
+        for (PauseTransition timer : typingExpiryTimers.values()) {
+            timer.stop();
+        }
+        typingExpiryTimers.clear();
+        refreshTypingLabel();
+    }
+
+    private void refreshTypingLabel() {
+        if (activeTypingUsers.isEmpty()) {
+            typingLabel.setVisible(false);
+            typingLabel.setManaged(false);
+            typingLabel.setText("");
+            return;
+        }
+        Set<String> names = new java.util.LinkedHashSet<>(activeTypingUsers.values());
+        String text;
+        if (names.size() == 1) {
+            text = names.iterator().next() + " is typing...";
+        } else if (names.size() == 2) {
+            text = String.join(" and ", names) + " are typing...";
+        } else {
+            text = names.iterator().next() + " and others are typing...";
+        }
+        typingLabel.setText(text);
+        typingLabel.setVisible(true);
+        typingLabel.setManaged(true);
     }
 
     private void onUpdateProfileResponse(ProtocolMessage m) {
