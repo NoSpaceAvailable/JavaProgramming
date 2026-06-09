@@ -10,7 +10,7 @@
     <VBox styleClass="auth-card" maxWidth="420" maxHeight="600" spacing="8" alignment="CENTER">
 
         <Label text="Create an account" styleClass="label-title"/>
-        <Label text="Join LQC Chat today" styleClass="label-subtitle"/>
+        <Label text="Join Micord today" styleClass="label-subtitle"/>
 
         <Region prefHeight="16"/>
 

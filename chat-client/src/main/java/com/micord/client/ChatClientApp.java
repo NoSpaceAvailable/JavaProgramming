@@ -9,7 +9,7 @@ public class ChatClientApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("LQC Chat");
+        primaryStage.setTitle("Micord");
         primaryStage.setMinWidth(400);
         primaryStage.setMinHeight(500);
         SceneManager.initialize(primaryStage);

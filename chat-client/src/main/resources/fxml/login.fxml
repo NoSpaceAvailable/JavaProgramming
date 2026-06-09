@@ -11,7 +11,7 @@
     <VBox styleClass="auth-card" maxWidth="420" maxHeight="500" spacing="8" alignment="CENTER">
 
         <Label text="Welcome back!" styleClass="label-title"/>
-        <Label text="Sign in to continue to LQC Chat" styleClass="label-subtitle"/>
+        <Label text="Sign in to continue to Micord" styleClass="label-subtitle"/>
 
         <Region prefHeight="16"/>
 
