@@ -3,10 +3,12 @@ package com.micord.server.handler;
 import com.micord.common.model.User;
 import com.micord.common.protocol.MessageType;
 import com.micord.common.protocol.ProtocolMessage;
+import com.micord.common.protocol.notification.ProfileUpdatedNotification;
 import com.micord.common.protocol.request.UpdateProfileRequest;
 import com.micord.common.protocol.response.UpdateProfileResponse;
 import com.micord.common.util.JsonUtil;
 import com.micord.server.ClientHandler;
+import com.micord.server.manager.SessionManager;
 import com.micord.server.repository.UserRepository;
 import com.micord.server.util.ConfigUtil;
 import org.slf4j.Logger;
@@ -40,6 +42,7 @@ public class UpdateProfileHandler implements RequestHandler {
         }
 
         String avatarUrl = user.getAvatarUrl();
+        boolean avatarUpdated = false;
         if (req.getAvatarData() != null && !req.getAvatarData().isEmpty()) {
             try {
                 byte[] data = Base64.getDecoder().decode(req.getAvatarData());
@@ -60,6 +63,7 @@ public class UpdateProfileHandler implements RequestHandler {
                 Path avatarFile = avatarDir.resolve(user.getId() + "." + ext);
                 Files.write(avatarFile, data);
                 avatarUrl = avatarFile.toString();
+                avatarUpdated = true;
             } catch (IllegalArgumentException e) {
                 client.sendMessage(JsonUtil.wrap(MessageType.UPDATE_PROFILE_RESPONSE,
                         new UpdateProfileResponse(false, "Invalid avatar data"), message.getRequestId()));
@@ -78,6 +82,10 @@ public class UpdateProfileHandler implements RequestHandler {
             user.setAvatarUrl(avatarUrl);
             client.sendMessage(JsonUtil.wrap(MessageType.UPDATE_PROFILE_RESPONSE,
                     new UpdateProfileResponse(true, displayName, avatarUrl), message.getRequestId()));
+            SessionManager.getInstance().broadcastToAll(
+                    JsonUtil.wrap(MessageType.PROFILE_UPDATED_NOTIFICATION,
+                            new ProfileUpdatedNotification(user.getId(), displayName, avatarUpdated)),
+                    user.getId());
             logger.info("User {} updated profile", user.getUsername());
         } else {
             client.sendMessage(JsonUtil.wrap(MessageType.UPDATE_PROFILE_RESPONSE,

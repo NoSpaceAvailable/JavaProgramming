@@ -19,6 +19,7 @@ import com.micord.common.protocol.notification.AddedToRoomNotification;
 import com.micord.common.protocol.notification.MessageDeletedNotification;
 import com.micord.common.protocol.notification.MessageEditedNotification;
 import com.micord.common.protocol.notification.NewMessageNotification;
+import com.micord.common.protocol.notification.ProfileUpdatedNotification;
 import com.micord.common.protocol.notification.ReactionNotification;
 import com.micord.common.protocol.notification.RemovedFromRoomNotification;
 import com.micord.common.protocol.notification.StatusChangeNotification;
@@ -118,6 +119,7 @@ public class MainChatController implements MessageListener {
     // Unread counters keyed by conversation id (roomId or peer userId).
     private final Map<Long, Integer> roomUnread = new HashMap<>();
     private final Map<Long, Integer> dmUnread = new HashMap<>();
+    private final Map<Long, List<StackPane>> messageAvatarNodes = new HashMap<>();
     // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
     private final Map<Long, UserStatus> userStatuses = new HashMap<>();
     private final Map<Long, String> activeTypingUsers = new LinkedHashMap<>();
@@ -753,6 +755,7 @@ public class MainChatController implements MessageListener {
     private void clearMessages() {
         messagesBox.getChildren().clear();
         bubbles.clear();
+        messageAvatarNodes.clear();
         if (typingLabel != null) {
             typingLabel.setVisible(false);
             typingLabel.setManaged(false);
@@ -805,6 +808,7 @@ public class MainChatController implements MessageListener {
             case REACTION_NOTIFICATION -> onReactionNotification(message);
             case STATUS_CHANGE_NOTIFICATION -> onStatusChange(message);
             case USER_TYPING_NOTIFICATION -> onTypingNotification(message);
+            case PROFILE_UPDATED_NOTIFICATION -> onProfileUpdated(message);
             case STATUS_UPDATE_RESPONSE -> onStatusUpdateResponse(message);
             case USER_JOINED_NOTIFICATION -> onUserJoined(message);
             case USER_LEFT_NOTIFICATION -> onUserLeft(message);
@@ -1134,6 +1138,42 @@ public class MainChatController implements MessageListener {
         }
     }
 
+    private void onProfileUpdated(ProtocolMessage m) {
+        ProfileUpdatedNotification n = JsonUtil.fromJson(m.getPayload(), ProfileUpdatedNotification.class);
+        User cached = knownUsers.get(n.getUserId());
+        if (cached != null) {
+            cached.setDisplayName(n.getDisplayName());
+        } else {
+            knownUsers.put(n.getUserId(), new User(n.getUserId(), "", n.getDisplayName()));
+        }
+
+        for (User member : members) {
+            if (member.getId() == n.getUserId()) {
+                member.setDisplayName(n.getDisplayName());
+                break;
+            }
+        }
+
+        DmEntry dm = findDm(n.getUserId());
+        if (dm != null) dm.displayName = n.getDisplayName();
+
+        if (active != null && active.kind == Conversation.Kind.DM && active.id == n.getUserId()) {
+            active = new Conversation(Conversation.Kind.DM, n.getUserId(), n.getDisplayName());
+            conversationTitle.setText("@ " + n.getDisplayName());
+            messageInput.setPromptText("Message @" + n.getDisplayName());
+            updateDmHeader(n.getUserId(), n.getDisplayName());
+        }
+
+        if (n.isAvatarUpdated()) {
+            userAvatarCache.remove(n.getUserId());
+            avatarRequested.remove(n.getUserId());
+            requestAvatarIfNeeded(n.getUserId());
+        }
+
+        dmListView.refresh();
+        memberListView.refresh();
+    }
+
     private void onStatusUpdateResponse(ProtocolMessage m) {
         StatusUpdateResponse r = JsonUtil.fromJson(m.getPayload(), StatusUpdateResponse.class);
         if (!r.isSuccess()) {
@@ -1245,7 +1285,11 @@ public class MainChatController implements MessageListener {
 
     private void onAvatarResponse(ProtocolMessage m) {
         AvatarResponse r = JsonUtil.fromJson(m.getPayload(), AvatarResponse.class);
-        if (r.getAvatarData() == null) return;
+        if (r.getAvatarData() == null) {
+            userAvatarCache.remove(r.getUserId());
+            refreshMessageAvatarNodes(r.getUserId(), null);
+            return;
+        }
         try {
             byte[] data = java.util.Base64.getDecoder().decode(r.getAvatarData());
             Image img = new Image(new java.io.ByteArrayInputStream(data));
@@ -1257,6 +1301,7 @@ public class MainChatController implements MessageListener {
             if (active != null && active.kind == Conversation.Kind.DM && active.id == r.getUserId()) {
                 applyAvatarToPane(headerAvatarPane, img, 28);
             }
+            refreshMessageAvatarNodes(r.getUserId(), img);
             memberListView.refresh();
             dmListView.refresh();
         } catch (Exception ignored) {}
@@ -1271,6 +1316,14 @@ public class MainChatController implements MessageListener {
         javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(size / 2, size / 2, size / 2);
         iv.setClip(clip);
         pane.getChildren().setAll(iv);
+    }
+
+    private void refreshMessageAvatarNodes(long userId, Image img) {
+        List<StackPane> nodes = messageAvatarNodes.get(userId);
+        if (nodes == null || img == null) return;
+        for (StackPane pane : nodes) {
+            applyAvatarToPane(pane, img, 36);
+        }
     }
 
     private void onError(ProtocolMessage m) {
@@ -1419,6 +1472,7 @@ public class MainChatController implements MessageListener {
 
         String senderName = m.getSenderName() == null ? "Unknown" : m.getSenderName();
         StackPane msgAvatar = createAvatarNode(m.getSenderId(), senderName, 36);
+        messageAvatarNodes.computeIfAbsent(m.getSenderId(), ignored -> new ArrayList<>()).add(msgAvatar);
 
         Label nameLabel = new Label(senderName);
         nameLabel.getStyleClass().add("sender-name");
@@ -1869,7 +1923,7 @@ public class MainChatController implements MessageListener {
 
     private static final class DmEntry {
         final long userId;
-        final String displayName;
+        String displayName;
         DmEntry(long userId, String displayName) {
             this.userId = userId;
             this.displayName = displayName;
