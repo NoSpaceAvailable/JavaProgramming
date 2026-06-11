@@ -53,6 +53,10 @@ Hệ thống được chia làm 3 module Maven:
 
 - [x] **Đăng ký và đăng nhập** — mật khẩu được băm bằng BCrypt.
 - [x] **Server cộng đồng + kênh (channel)** — tạo server, mã mời (invite code), tham gia bằng mã; mỗi server có nhiều kênh text (kiểu Discord).
+- [x] **Phân quyền RBAC** — vai trò theo server (Owner/Admin/Moderator/Member); di chuột vào thành viên để xem vai trò; đổi vai trò (owner), **kick** (mod+), **ban** (admin+, chặn vào lại bằng mã mời).
+- [x] **@mention** — gợi ý tự động khi gõ `@`, tô sáng tin nhắn nhắc đến bạn, đánh dấu 🔔 ở hội thoại có mention.
+- [x] **Đếm tin chưa đọc** — số tin chưa đọc theo từng phòng/kênh/DM và tổng trên tiêu đề cửa sổ.
+- [x] **Audit log** — ghi nhật ký hành động quản trị (tạo kênh, kick, ban, đổi vai trò…) cho từng server; owner/admin xem được.
 - [x] **Phòng chat nhóm** — tạo, tham gia, rời phòng; hỗ trợ phòng công khai và riêng tư.
 - [x] **Thêm/mời người vào phòng** — bất kỳ thành viên nào cũng có thể thêm người dùng khác vào phòng (kể cả phòng riêng tư).
 - [x] **Xoá thành viên (kick)** — chủ phòng có thể xoá thành viên khỏi phòng.

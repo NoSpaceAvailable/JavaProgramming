@@ -34,6 +34,11 @@ public class RequestDispatcher {
         handlers.put(MessageType.JOIN_SERVER_REQUEST, new JoinServerHandler());
         handlers.put(MessageType.CREATE_CHANNEL_REQUEST, new CreateChannelHandler());
         handlers.put(MessageType.LIST_CHANNELS_REQUEST, new ListChannelsHandler());
+        handlers.put(MessageType.SERVER_MEMBERS_REQUEST, new ServerMembersHandler());
+        handlers.put(MessageType.CHANGE_ROLE_REQUEST, new ChangeRoleHandler());
+        handlers.put(MessageType.KICK_FROM_SERVER_REQUEST, new KickFromServerHandler());
+        handlers.put(MessageType.BAN_FROM_SERVER_REQUEST, new BanFromServerHandler());
+        handlers.put(MessageType.VIEW_AUDIT_LOG_REQUEST, new ViewAuditLogHandler());
 
         handlers.put(MessageType.SEND_MESSAGE_REQUEST, new SendMessageHandler());
         handlers.put(MessageType.PRIVATE_MESSAGE_REQUEST, new PrivateMessageHandler());

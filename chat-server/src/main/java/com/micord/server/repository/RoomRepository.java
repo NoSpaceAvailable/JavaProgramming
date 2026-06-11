@@ -196,6 +196,20 @@ public class RoomRepository {
         }
     }
 
+    /** Removes a user from every channel (room) of a server — used when they are kicked/banned. */
+    public void removeMemberFromServerChannels(long serverId, long userId) {
+        String sql = "DELETE FROM room_members WHERE user_id = ? AND room_id IN " +
+                "(SELECT id FROM rooms WHERE server_id = ?)";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, userId);
+            stmt.setLong(2, serverId);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            logger.error("Error removing user {} from channels of server {}", userId, serverId, e);
+        }
+    }
+
     public List<Room> findChannelsByServerId(long serverId) {
         String sql = "SELECT id, name, description, owner_id, is_private, server_id, created_at " +
                 "FROM rooms WHERE server_id = ? ORDER BY created_at, id";

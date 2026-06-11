@@ -10,6 +10,7 @@ import com.micord.client.util.SceneManager;
 import com.micord.common.model.FileAttachment;
 import com.micord.common.model.Message;
 import com.micord.common.model.Reaction;
+import com.micord.common.model.AuditEntry;
 import com.micord.common.model.Room;
 import com.micord.common.model.Server;
 import com.micord.common.model.User;
@@ -18,6 +19,8 @@ import com.micord.common.protocol.MessageType;
 import com.micord.common.protocol.ProtocolMessage;
 import com.micord.common.protocol.notification.AddedToRoomNotification;
 import com.micord.common.protocol.notification.ChannelCreatedNotification;
+import com.micord.common.protocol.notification.KickedFromServerNotification;
+import com.micord.common.protocol.notification.ServerMembersChangedNotification;
 import com.micord.common.protocol.notification.MessageDeletedNotification;
 import com.micord.common.protocol.notification.MessageEditedNotification;
 import com.micord.common.protocol.notification.NewMessageNotification;
@@ -116,6 +119,7 @@ public class MainChatController implements MessageListener {
     private final ObservableList<Room> rooms = FXCollections.observableArrayList();
     private final ObservableList<Server> servers = FXCollections.observableArrayList();
     private Long currentServerId; // null = Home (standalone rooms); otherwise the open server's id
+    private String currentServerRole; // current user's role in the open server
     private final ObservableList<DmEntry> dms = FXCollections.observableArrayList();
     private final ObservableList<User> members = FXCollections.observableArrayList();
     // Cache of every user we've seen, used to render DM display names.
@@ -125,6 +129,7 @@ public class MainChatController implements MessageListener {
     // Unread counters keyed by conversation id (roomId or peer userId).
     private final Map<Long, Integer> roomUnread = new HashMap<>();
     private final Map<Long, Integer> dmUnread = new HashMap<>();
+    private final java.util.Set<String> mentionedConversations = new java.util.HashSet<>(); // keys: "R"+roomId / "D"+userId
     private final Map<Long, List<StackPane>> messageAvatarNodes = new HashMap<>();
     // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
     private final Map<Long, UserStatus> userStatuses = new HashMap<>();
@@ -167,6 +172,7 @@ public class MainChatController implements MessageListener {
     private Conversation active;
     private Room currentRoom; // the Room object for the currently open room (null for DMs), used for owner checks
     private javafx.stage.Popup emojiPopup;
+    private ContextMenu mentionPopup;
     private Image cachedAvatar;
     private final Map<Long, Image> userAvatarCache = new HashMap<>();
     private final java.util.Set<Long> avatarRequested = new java.util.HashSet<>();
@@ -189,9 +195,10 @@ public class MainChatController implements MessageListener {
                     return;
                 }
                 int unread = roomUnread.getOrDefault(item.getId(), 0);
+                String bell = mentionedConversations.contains("R" + item.getId()) ? "🔔 " : "";
                 setText(unread > 0
-                        ? "# " + item.getName() + "  (" + unread + ")"
-                        : "# " + item.getName());
+                        ? bell + "# " + item.getName() + "  (" + unread + ")"
+                        : bell + "# " + item.getName());
                 setStyle(unread > 0 ? "-fx-font-weight: bold; -fx-text-fill: #ffffff;" : "");
             }
         });
@@ -218,6 +225,12 @@ public class MainChatController implements MessageListener {
                 MenuItem code = new MenuItem("Show invite code");
                 code.setOnAction(e -> showInviteCode(item));
                 menu.getItems().add(code);
+                if (rank(item.getMyRole()) >= rank("ADMIN")) {
+                    MenuItem audit = new MenuItem("View audit log");
+                    audit.setOnAction(e -> connection.send(JsonUtil.wrap(
+                            MessageType.VIEW_AUDIT_LOG_REQUEST, new ViewAuditLogRequest(item.getId()))));
+                    menu.getItems().add(audit);
+                }
                 setContextMenu(menu);
             }
         });
@@ -245,7 +258,7 @@ public class MainChatController implements MessageListener {
                 avatarWithStatus.getChildren().add(dot);
 
                 int unread = dmUnread.getOrDefault(item.userId, 0);
-                String name = "@" + item.displayName;
+                String name = (mentionedConversations.contains("D" + item.userId) ? "🔔 " : "") + "@" + item.displayName;
                 if (unread > 0) name += "  (" + unread + ")";
                 Label nameLabel = new Label(name);
                 nameLabel.setStyle(unread > 0
@@ -285,29 +298,22 @@ public class MainChatController implements MessageListener {
 
                 Label nameLabel = new Label(user.getDisplayName());
                 nameLabel.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
-                Label statusLabel = new Label(statusText(liveStatus));
-                statusLabel.setStyle("-fx-text-fill: #72767d; -fx-font-size: 11px;");
-                VBox info = new VBox(0, nameLabel, statusLabel);
+                String role = user.getServerRole();
+                Label sub = new Label(role != null ? capitalize(role) : statusText(liveStatus));
+                sub.setStyle("-fx-text-fill: " + roleColor(role) + "; -fx-font-size: 11px;");
+                VBox info = new VBox(0, nameLabel, sub);
                 HBox cell = new HBox(8, avatarWithStatus, info);
                 cell.setAlignment(Pos.CENTER_LEFT);
                 setText(null);
                 setGraphic(cell);
 
-                // Owner-only: right-click a member to remove them from the room.
-                boolean canKick = currentRoom != null
-                        && currentRoom.getOwnerId() == currentUserId
-                        && user.getId() != currentUserId;
-                if (canKick) {
-                    ContextMenu menu = new ContextMenu();
-                    MenuItem kick = new MenuItem("Remove from room");
-                    long targetId = user.getId();
-                    String targetName = user.getDisplayName();
-                    kick.setOnAction(ev -> confirmRemoveMember(targetId, targetName));
-                    menu.getItems().add(kick);
-                    setContextMenu(menu);
-                } else {
-                    setContextMenu(null);
-                }
+                // Hover shows role + status (Discord-style quick info).
+                String tip = user.getDisplayName()
+                        + (role != null ? "  •  " + capitalize(role) : "")
+                        + "  •  " + statusText(liveStatus);
+                Tooltip.install(cell, new Tooltip(tip));
+
+                setContextMenu(buildMemberMenu(user));
             }
         });
         memberListView.setOnMouseClicked(e -> {
@@ -342,7 +348,74 @@ public class MainChatController implements MessageListener {
                 localTypingIdleTimer.stop();
                 sendTypingState(false);
             }
+            updateMentionPopup(newV);
         });
+    }
+
+    // ---- @mention autocomplete ----
+
+    private void updateMentionPopup(String text) {
+        String prefix = currentMentionPrefix(text);
+        if (prefix == null) {
+            if (mentionPopup != null) mentionPopup.hide();
+            return;
+        }
+        // Candidate users: current conversation members + everyone we know about.
+        java.util.LinkedHashMap<Long, User> pool = new java.util.LinkedHashMap<>();
+        for (User u : members) pool.put(u.getId(), u);
+        for (User u : knownUsers.values()) pool.putIfAbsent(u.getId(), u);
+
+        String lower = prefix.toLowerCase();
+        if (mentionPopup == null) mentionPopup = new ContextMenu();
+        mentionPopup.getItems().clear();
+        pool.values().stream()
+                .filter(u -> u.getDisplayName() != null && u.getDisplayName().toLowerCase().startsWith(lower))
+                .limit(8)
+                .forEach(u -> {
+                    MenuItem item = new MenuItem(u.getDisplayName() + "  (@" + u.getUsername() + ")");
+                    item.setOnAction(e -> insertMention(u.getDisplayName()));
+                    mentionPopup.getItems().add(item);
+                });
+        if (mentionPopup.getItems().isEmpty()) {
+            mentionPopup.hide();
+        } else if (!mentionPopup.isShowing()) {
+            mentionPopup.show(messageInput, javafx.geometry.Side.TOP, 0, 0);
+        }
+    }
+
+    /** Returns the text typed after a trailing "@token" (or null if not currently mentioning). */
+    private String currentMentionPrefix(String text) {
+        if (text == null || text.isEmpty()) return null;
+        int at = text.lastIndexOf('@');
+        if (at < 0) return null;
+        if (at > 0 && !Character.isWhitespace(text.charAt(at - 1))) return null; // '@' must start a word
+        String token = text.substring(at + 1);
+        if (token.contains(" ") || token.contains("\n")) return null; // already finished the mention
+        return token;
+    }
+
+    private void insertMention(String displayName) {
+        String text = messageInput.getText();
+        int at = text.lastIndexOf('@');
+        if (at < 0) return;
+        String replaced = text.substring(0, at) + "@" + displayName + " ";
+        messageInput.setText(replaced);
+        messageInput.positionCaret(replaced.length());
+        if (mentionPopup != null) mentionPopup.hide();
+    }
+
+    private boolean mentionsMe(String content) {
+        return content != null && currentDisplayName != null && content.contains("@" + currentDisplayName);
+    }
+
+    private void updateWindowTitle() {
+        int total = roomUnread.values().stream().mapToInt(Integer::intValue).sum()
+                + dmUnread.values().stream().mapToInt(Integer::intValue).sum();
+        if (messagesScrollPane == null || messagesScrollPane.getScene() == null) return;
+        var w = messagesScrollPane.getScene().getWindow();
+        if (w instanceof javafx.stage.Stage st) {
+            st.setTitle(total > 0 ? "Micord (" + total + ")" : "Micord");
+        }
     }
 
     private void onDragOver(DragEvent event) {
@@ -531,9 +604,99 @@ public class MainChatController implements MessageListener {
 
     private void onSelectServer(Server server) {
         currentServerId = server.getId();
+        currentServerRole = server.getMyRole();
         roomsHeader.setText("📋 " + server.getName().toUpperCase());
         connection.send(JsonUtil.wrap(MessageType.LIST_CHANNELS_REQUEST,
                 new ListChannelsRequest(server.getId())));
+    }
+
+    // RBAC role hierarchy (mirrors the server's ServerService.rank).
+    private static int rank(String role) {
+        if (role == null) return -1;
+        return switch (role) {
+            case "OWNER" -> 3;
+            case "ADMIN" -> 2;
+            case "MODERATOR" -> 1;
+            case "MEMBER" -> 0;
+            default -> -1;
+        };
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return "";
+        return s.charAt(0) + s.substring(1).toLowerCase();
+    }
+
+    private static String roleColor(String role) {
+        if (role == null) return "#72767d";
+        return switch (role) {
+            case "OWNER" -> "#faa61a";
+            case "ADMIN" -> "#f04747";
+            case "MODERATOR" -> "#43b581";
+            default -> "#72767d";
+        };
+    }
+
+    /** Builds the right-click menu for a member cell, depending on context and the viewer's role. */
+    private ContextMenu buildMemberMenu(User user) {
+        if (user.getId() == currentUserId) return null;
+        boolean inServerChannel = currentRoom != null && currentRoom.getServerId() != null && currentServerId != null;
+        if (inServerChannel) {
+            long serverId = currentServerId;
+            String myRole = currentServerRole;
+            String targetRole = user.getServerRole();
+            long tid = user.getId();
+            String tn = user.getDisplayName();
+            ContextMenu menu = new ContextMenu();
+
+            if ("OWNER".equals(myRole) && !"OWNER".equals(targetRole)) {
+                Menu setRole = new Menu("Set role");
+                for (String r : new String[]{"ADMIN", "MODERATOR", "MEMBER"}) {
+                    MenuItem mi = new MenuItem(capitalize(r));
+                    mi.setOnAction(e -> connection.send(JsonUtil.wrap(MessageType.CHANGE_ROLE_REQUEST,
+                            new ChangeRoleRequest(serverId, tid, r))));
+                    setRole.getItems().add(mi);
+                }
+                menu.getItems().add(setRole);
+            }
+            boolean canAct = rank(myRole) > rank(targetRole);
+            if (rank(myRole) >= rank("MODERATOR") && canAct) {
+                MenuItem kick = new MenuItem("Kick from server");
+                kick.setOnAction(e -> {
+                    Alert a = new Alert(Alert.AlertType.CONFIRMATION,
+                            "Kick " + tn + " from the server?", ButtonType.OK, ButtonType.CANCEL);
+                    a.showAndWait().filter(b -> b == ButtonType.OK).ifPresent(b ->
+                            connection.send(JsonUtil.wrap(MessageType.KICK_FROM_SERVER_REQUEST,
+                                    new KickFromServerRequest(serverId, tid))));
+                });
+                menu.getItems().add(kick);
+            }
+            if (rank(myRole) >= rank("ADMIN") && canAct) {
+                MenuItem ban = new MenuItem("Ban from server");
+                ban.setOnAction(e -> {
+                    TextInputDialog d = new TextInputDialog();
+                    d.setTitle("Ban member");
+                    d.setHeaderText("Ban " + tn + " from the server");
+                    d.setContentText("Reason (optional):");
+                    String reason = d.showAndWait().orElse("");
+                    connection.send(JsonUtil.wrap(MessageType.BAN_FROM_SERVER_REQUEST,
+                            new BanFromServerRequest(serverId, tid, reason)));
+                });
+                menu.getItems().add(ban);
+            }
+            return menu.getItems().isEmpty() ? null : menu;
+        }
+        // Standalone room: the room owner can remove members (legacy behaviour).
+        if (currentRoom != null && currentRoom.getServerId() == null && currentRoom.getOwnerId() == currentUserId) {
+            ContextMenu menu = new ContextMenu();
+            MenuItem kick = new MenuItem("Remove from room");
+            long tid = user.getId();
+            String tn = user.getDisplayName();
+            kick.setOnAction(ev -> confirmRemoveMember(tid, tn));
+            menu.getItems().add(kick);
+            return menu;
+        }
+        return null;
     }
 
     private void showInviteCode(Server server) {
@@ -763,12 +926,18 @@ public class MainChatController implements MessageListener {
         sendTypingState(false);
         active = new Conversation(Conversation.Kind.ROOM, room.getId(), room.getName());
         currentRoom = room;
-        if (roomUnread.remove(room.getId()) != null) roomListView.refresh();
+        roomUnread.remove(room.getId());
+        mentionedConversations.remove("R" + room.getId());
+        roomListView.refresh();
+        updateWindowTitle();
         conversationTitle.setText("# " + room.getName());
-        leaveButton.setVisible(true);
-        leaveButton.setManaged(true);
-        inviteButton.setVisible(true);
-        inviteButton.setManaged(true);
+        // Channels are managed at the server level (invite code + member panel),
+        // so the room-level leave/invite buttons only apply to standalone rooms.
+        boolean standalone = room.getServerId() == null;
+        leaveButton.setVisible(standalone);
+        leaveButton.setManaged(standalone);
+        inviteButton.setVisible(standalone);
+        inviteButton.setManaged(standalone);
         searchButton.setVisible(true);
         searchButton.setManaged(true);
         membersPanel.setVisible(true);
@@ -787,15 +956,24 @@ public class MainChatController implements MessageListener {
         clearTypingIndicator();
         connection.send(JsonUtil.wrap(MessageType.GET_HISTORY_REQUEST,
                 new GetHistoryRequest(room.getId(), 0, 50)));
-        connection.send(JsonUtil.wrap(MessageType.ROOM_MEMBERS_REQUEST,
-                new RoomMembersRequest(room.getId())));
+        if (room.getServerId() != null) {
+            // Channel: the member panel shows the server's members with their roles.
+            connection.send(JsonUtil.wrap(MessageType.SERVER_MEMBERS_REQUEST,
+                    new ServerMembersRequest(room.getServerId())));
+        } else {
+            connection.send(JsonUtil.wrap(MessageType.ROOM_MEMBERS_REQUEST,
+                    new RoomMembersRequest(room.getId())));
+        }
     }
 
     private void openDm(DmEntry dm) {
         sendTypingState(false);
         active = new Conversation(Conversation.Kind.DM, dm.userId, dm.displayName);
         currentRoom = null;
-        if (dmUnread.remove(dm.userId) != null) dmListView.refresh();
+        dmUnread.remove(dm.userId);
+        mentionedConversations.remove("D" + dm.userId);
+        dmListView.refresh();
+        updateWindowTitle();
         conversationTitle.setText("@ " + dm.displayName);
         leaveButton.setVisible(false);
         leaveButton.setManaged(false);
@@ -891,6 +1069,14 @@ public class MainChatController implements MessageListener {
             case CREATE_CHANNEL_RESPONSE -> onCreateChannelResponse(message);
             case LIST_CHANNELS_RESPONSE -> onChannelListResponse(message);
             case CHANNEL_CREATED_NOTIFICATION -> onChannelCreated(message);
+            case SERVER_MEMBERS_RESPONSE -> onServerMembersResponse(message);
+            case SERVER_MEMBERS_CHANGED_NOTIFICATION -> onServerMembersChanged(message);
+            case KICKED_FROM_SERVER_NOTIFICATION -> onKickedFromServer(message);
+            case SERVER_ACTION_RESPONSE -> {
+                ServerActionResponse r = JsonUtil.fromJson(message.getPayload(), ServerActionResponse.class);
+                if (!r.isSuccess()) showAlert(Alert.AlertType.ERROR, r.getMessage());
+            }
+            case VIEW_AUDIT_LOG_RESPONSE -> onAuditLogResponse(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
             case MESSAGE_EDITED_NOTIFICATION -> onMessageEdited(message);
@@ -1196,6 +1382,90 @@ public class MainChatController implements MessageListener {
         }
     }
 
+    private void onServerMembersResponse(ProtocolMessage m) {
+        ServerMembersResponse r = JsonUtil.fromJson(m.getPayload(), ServerMembersResponse.class);
+        if (currentRoom == null || currentRoom.getServerId() == null
+                || currentRoom.getServerId().longValue() != r.getServerId()) return;
+        if (r.getMembers() != null) {
+            members.setAll(r.getMembers());
+            for (User u : r.getMembers()) {
+                knownUsers.put(u.getId(), u);
+                if (u.getStatus() != null) userStatuses.put(u.getId(), u.getStatus());
+            }
+            membersTitle.setText("MEMBERS — " + r.getMembers().size());
+        }
+    }
+
+    private void onServerMembersChanged(ProtocolMessage m) {
+        ServerMembersChangedNotification n = JsonUtil.fromJson(m.getPayload(), ServerMembersChangedNotification.class);
+        if (currentRoom != null && currentRoom.getServerId() != null
+                && currentRoom.getServerId().longValue() == n.getServerId()) {
+            connection.send(JsonUtil.wrap(MessageType.SERVER_MEMBERS_REQUEST,
+                    new ServerMembersRequest(n.getServerId())));
+        }
+    }
+
+    private void onKickedFromServer(ProtocolMessage m) {
+        KickedFromServerNotification n = JsonUtil.fromJson(m.getPayload(), KickedFromServerNotification.class);
+        servers.removeIf(s -> s.getId() == n.getServerId());
+        rooms.removeIf(rr -> rr.getServerId() != null && rr.getServerId().longValue() == n.getServerId());
+        if (currentServerId != null && currentServerId == n.getServerId()) {
+            currentServerId = null;
+            currentServerRole = null;
+            serverListView.getSelectionModel().clearSelection();
+            roomsHeader.setText("ROOMS");
+            active = null;
+            currentRoom = null;
+            clearMessages();
+            conversationTitle.setText("Select a room or DM");
+            members.clear();
+            messageInput.setDisable(true);
+            connection.send(JsonUtil.wrap(MessageType.LIST_ROOMS_REQUEST, new Object()));
+        }
+        showAlert(Alert.AlertType.WARNING,
+                (n.isBanned() ? "You were banned from \"" : "You were removed from \"") + n.getServerName() + "\""
+                        + (n.getReason() != null && !n.getReason().isBlank() ? "\nReason: " + n.getReason() : ""));
+    }
+
+    private void onAuditLogResponse(ProtocolMessage m) {
+        AuditLogResponse r = JsonUtil.fromJson(m.getPayload(), AuditLogResponse.class);
+        List<AuditEntry> entries = r.getEntries() == null ? List.of() : r.getEntries();
+
+        ListView<AuditEntry> list = new ListView<>();
+        list.getItems().setAll(entries);
+        list.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(AuditEntry e, boolean empty) {
+                super.updateItem(e, empty);
+                if (empty || e == null) { setText(null); setGraphic(null); return; }
+                String when = e.getCreatedAt() != null
+                        ? e.getCreatedAt().format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm"))
+                        : "";
+                Label head = new Label(e.getAction() + "  •  " + (e.getActorName() == null ? "system" : e.getActorName()) + "  •  " + when);
+                head.setStyle("-fx-text-fill: #7289da; -fx-font-size: 11px; -fx-font-weight: bold;");
+                Label detail = new Label(e.getDetail() == null ? "" : e.getDetail());
+                detail.setWrapText(true);
+                detail.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                VBox box = new VBox(2, head, detail);
+                box.setStyle("-fx-padding: 6 4 6 4;");
+                setGraphic(box);
+                setText(null);
+            }
+        });
+        Label title = new Label("Audit log (" + entries.size() + " entries)");
+        title.setStyle("-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 8;");
+        VBox root = new VBox(title, list);
+        VBox.setVgrow(list, javafx.scene.layout.Priority.ALWAYS);
+        root.setStyle("-fx-background-color: #36393f;");
+        javafx.scene.Scene scene = new javafx.scene.Scene(root, 480, 540);
+        var css = getClass().getResource("/css/dark-theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+        javafx.stage.Stage stage = new javafx.stage.Stage();
+        stage.setTitle("Audit log");
+        stage.setScene(scene);
+        stage.show();
+    }
+
     private void onUserListResponse(ProtocolMessage m) {
         UserListResponse r = JsonUtil.fromJson(m.getPayload(), UserListResponse.class);
         if (r.getUsers() != null) {
@@ -1238,7 +1508,9 @@ public class MainChatController implements MessageListener {
                 appendAndScroll(n);
             } else if (n.getSenderId() != currentUserId) {
                 roomUnread.merge(n.getRoomId(), 1, Integer::sum);
+                if (mentionsMe(n.getContent())) mentionedConversations.add("R" + n.getRoomId());
                 roomListView.refresh();
+                updateWindowTitle();
             }
             return;
         }
@@ -1260,7 +1532,9 @@ public class MainChatController implements MessageListener {
             appendAndScroll(n);
         } else if (n.getSenderId() != currentUserId) {
             dmUnread.merge(peerId, 1, Integer::sum);
+            if (mentionsMe(n.getContent())) mentionedConversations.add("D" + peerId);
             dmListView.refresh();
+            updateWindowTitle();
         }
     }
 
@@ -1670,6 +1944,11 @@ public class MainChatController implements MessageListener {
         VBox contentColumn = new VBox(2, header, body, reactionRow);
         contentColumn.getStyleClass().add("message-bubble");
         HBox.setHgrow(contentColumn, javafx.scene.layout.Priority.ALWAYS);
+        // Highlight messages that @mention the current user (Discord-style ping).
+        if (m.getMessageType() == Message.MessageType.TEXT && mentionsMe(m.getContent())) {
+            contentColumn.setStyle("-fx-background-color: rgba(250,166,26,0.10); "
+                    + "-fx-border-color: #faa61a; -fx-border-width: 0 0 0 3;");
+        }
 
         HBox container = new HBox(10, msgAvatar, contentColumn);
         container.setAlignment(Pos.TOP_LEFT);

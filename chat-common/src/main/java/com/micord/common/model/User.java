@@ -9,6 +9,7 @@ public class User {
     private String displayName;
     private String avatarUrl;
     private UserStatus status;
+    private String serverRole; // role within a server when listed as a server member (OWNER/ADMIN/MODERATOR/MEMBER)
     private LocalDateTime createdAt;
     private LocalDateTime lastSeenAt;
 
@@ -38,6 +39,9 @@ public class User {
 
     public UserStatus getStatus() { return status; }
     public void setStatus(UserStatus status) { this.status = status; }
+
+    public String getServerRole() { return serverRole; }
+    public void setServerRole(String serverRole) { this.serverRole = serverRole; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
