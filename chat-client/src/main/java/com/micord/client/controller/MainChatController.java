@@ -1760,7 +1760,13 @@ public class MainChatController implements MessageListener {
 
     private void onError(ProtocolMessage m) {
         ErrorResponse r = JsonUtil.fromJson(m.getPayload(), ErrorResponse.class);
-        showAlert(Alert.AlertType.ERROR, r.getMessage());
+        // "Not a member" errors are harmless races (e.g. pending channel requests right
+        // after being kicked) — don't spam the user with them; the kick notice is enough.
+        String msg = r.getMessage();
+        if (msg != null && msg.toLowerCase().contains("not a member")) {
+            return;
+        }
+        showAlert(Alert.AlertType.ERROR, msg);
     }
 
     // ---- Profile ----
