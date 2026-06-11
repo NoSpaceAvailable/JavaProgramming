@@ -75,3 +75,46 @@ CREATE TABLE IF NOT EXISTS dm_conversations (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_user1 ON dm_conversations(user1_id);
 CREATE INDEX IF NOT EXISTS idx_dm_user2 ON dm_conversations(user2_id);
+
+-- ===== Community servers (guilds) =====
+CREATE TABLE IF NOT EXISTS servers (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invite_code VARCHAR(16) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_servers_invite ON servers(invite_code);
+
+CREATE TABLE IF NOT EXISTS server_members (
+    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(12) NOT NULL DEFAULT 'MEMBER', -- OWNER / ADMIN / MODERATOR / MEMBER
+    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (server_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_server_members_user ON server_members(user_id);
+
+CREATE TABLE IF NOT EXISTS server_bans (
+    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    banned_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    reason VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (server_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    actor_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    actor_name VARCHAR(100) DEFAULT NULL,
+    action VARCHAR(40) NOT NULL,
+    detail VARCHAR(500) DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_server ON audit_log(server_id, created_at DESC);
+
+-- A room with a non-null server_id is a text channel belonging to that server.
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS server_id BIGINT REFERENCES servers(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_rooms_server ON rooms(server_id);

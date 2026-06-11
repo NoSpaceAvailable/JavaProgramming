@@ -23,7 +23,22 @@
             </HBox>
 
             <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 12 16 4 16;">
-                <Label text="ROOMS" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+                <Label text="SERVERS" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button text="🏠" styleClass="button-link"
+                        style="-fx-font-size: 13px; -fx-text-fill: #b9bbbe;"
+                        onAction="#handleHome"/>
+                <Button text="+" styleClass="button-link"
+                        style="-fx-font-size: 18px; -fx-text-fill: #b9bbbe;"
+                        onAction="#handleCreateServer"/>
+                <Button text="⤵" styleClass="button-link"
+                        style="-fx-font-size: 14px; -fx-text-fill: #b9bbbe;"
+                        onAction="#handleJoinServer"/>
+            </HBox>
+            <ListView fx:id="serverListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="120"/>
+
+            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 12 16 4 16;">
+                <Label fx:id="roomsHeader" text="ROOMS" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Button text="+" styleClass="button-link"
                         style="-fx-font-size: 18px; -fx-text-fill: #b9bbbe;"

@@ -11,11 +11,13 @@ import com.micord.common.model.FileAttachment;
 import com.micord.common.model.Message;
 import com.micord.common.model.Reaction;
 import com.micord.common.model.Room;
+import com.micord.common.model.Server;
 import com.micord.common.model.User;
 import com.micord.common.model.UserStatus;
 import com.micord.common.protocol.MessageType;
 import com.micord.common.protocol.ProtocolMessage;
 import com.micord.common.protocol.notification.AddedToRoomNotification;
+import com.micord.common.protocol.notification.ChannelCreatedNotification;
 import com.micord.common.protocol.notification.MessageDeletedNotification;
 import com.micord.common.protocol.notification.MessageEditedNotification;
 import com.micord.common.protocol.notification.NewMessageNotification;
@@ -82,6 +84,8 @@ public class MainChatController implements MessageListener {
     @FXML private Button inviteButton;
     @FXML private Button searchButton;
     @FXML private ListView<Room> roomListView;
+    @FXML private ListView<Server> serverListView;
+    @FXML private Label roomsHeader;
     @FXML private ListView<DmEntry> dmListView;
     @FXML private ListView<User> memberListView;
     @FXML private VBox messagesBox;
@@ -110,6 +114,8 @@ public class MainChatController implements MessageListener {
     private String currentDisplayName;
 
     private final ObservableList<Room> rooms = FXCollections.observableArrayList();
+    private final ObservableList<Server> servers = FXCollections.observableArrayList();
+    private Long currentServerId; // null = Home (standalone rooms); otherwise the open server's id
     private final ObservableList<DmEntry> dms = FXCollections.observableArrayList();
     private final ObservableList<User> members = FXCollections.observableArrayList();
     // Cache of every user we've seen, used to render DM display names.
@@ -194,6 +200,29 @@ public class MainChatController implements MessageListener {
                 dmListView.getSelectionModel().clearSelection();
                 openRoom(newV);
             }
+        });
+
+        serverListView.setItems(servers);
+        serverListView.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(Server item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setContextMenu(null);
+                    return;
+                }
+                setText("🏠 " + item.getName());
+                setStyle("-fx-text-fill: #dcddde;");
+                ContextMenu menu = new ContextMenu();
+                MenuItem code = new MenuItem("Show invite code");
+                code.setOnAction(e -> showInviteCode(item));
+                menu.getItems().add(code);
+                setContextMenu(menu);
+            }
+        });
+        serverListView.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+            if (newV != null) onSelectServer(newV);
         });
 
         dmListView.setItems(dms);
@@ -418,6 +447,7 @@ public class MainChatController implements MessageListener {
         gifButton.setDisable(true);
         showSystemPlaceholder("Select a room from the left or start a DM.");
         connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
+        connection.send(JsonUtil.wrap(MessageType.LIST_SERVERS_REQUEST, new Object()));
         loadOwnAvatar();
     }
 
@@ -435,6 +465,11 @@ public class MainChatController implements MessageListener {
 
     @FXML
     private void handleCreateRoom() {
+        // The "+" next to the room list is context-aware: inside a server it creates a channel.
+        if (currentServerId != null) {
+            handleCreateChannel();
+            return;
+        }
         TextInputDialog nameDialog = new TextInputDialog();
         nameDialog.setTitle("Create Room");
         nameDialog.setHeaderText("Create a new chat room");
@@ -450,6 +485,64 @@ public class MainChatController implements MessageListener {
 
         connection.send(JsonUtil.wrap(MessageType.CREATE_ROOM_REQUEST,
                 new CreateRoomRequest(nameOpt.get().trim(), desc.trim(), false)));
+    }
+
+    // ---- Servers + channels ----
+
+    @FXML
+    private void handleCreateServer() {
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Create Server");
+        d.setHeaderText("Create a community server");
+        d.setContentText("Server name:");
+        d.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).ifPresent(name ->
+                connection.send(JsonUtil.wrap(MessageType.CREATE_SERVER_REQUEST, new CreateServerRequest(name))));
+    }
+
+    @FXML
+    private void handleJoinServer() {
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Join Server");
+        d.setHeaderText("Join a server with an invite code");
+        d.setContentText("Invite code:");
+        d.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).ifPresent(code ->
+                connection.send(JsonUtil.wrap(MessageType.JOIN_SERVER_REQUEST, new JoinServerRequest(code))));
+    }
+
+    @FXML
+    private void handleHome() {
+        currentServerId = null;
+        serverListView.getSelectionModel().clearSelection();
+        roomsHeader.setText("ROOMS");
+        connection.send(JsonUtil.wrap(MessageType.LIST_ROOMS_REQUEST, new Object()));
+    }
+
+    private void handleCreateChannel() {
+        Long serverId = currentServerId;
+        if (serverId == null) return;
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Create Channel");
+        d.setHeaderText("New text channel");
+        d.setContentText("Channel name:");
+        d.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).ifPresent(name ->
+                connection.send(JsonUtil.wrap(MessageType.CREATE_CHANNEL_REQUEST,
+                        new CreateChannelRequest(serverId, name))));
+    }
+
+    private void onSelectServer(Server server) {
+        currentServerId = server.getId();
+        roomsHeader.setText("📋 " + server.getName().toUpperCase());
+        connection.send(JsonUtil.wrap(MessageType.LIST_CHANNELS_REQUEST,
+                new ListChannelsRequest(server.getId())));
+    }
+
+    private void showInviteCode(Server server) {
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(server.getInviteCode());
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+        showAlert(Alert.AlertType.INFORMATION,
+                "Invite code for \"" + server.getName() + "\":  " + server.getInviteCode()
+                        + "\n(copied to clipboard)");
     }
 
     @FXML
@@ -792,6 +885,12 @@ public class MainChatController implements MessageListener {
             case LIST_PUBLIC_ROOMS_RESPONSE -> onRoomListResponse(message, true);
             case ROOM_MEMBERS_RESPONSE -> onRoomMembersResponse(message);
             case LIST_USERS_RESPONSE -> onUserListResponse(message);
+            case CREATE_SERVER_RESPONSE -> onCreateServerResponse(message);
+            case LIST_SERVERS_RESPONSE -> onServerListResponse(message);
+            case JOIN_SERVER_RESPONSE -> onJoinServerResponse(message);
+            case CREATE_CHANNEL_RESPONSE -> onCreateChannelResponse(message);
+            case LIST_CHANNELS_RESPONSE -> onChannelListResponse(message);
+            case CHANNEL_CREATED_NOTIFICATION -> onChannelCreated(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
             case MESSAGE_EDITED_NOTIFICATION -> onMessageEdited(message);
@@ -1036,6 +1135,65 @@ public class MainChatController implements MessageListener {
         stage.initModality(javafx.stage.Modality.NONE);
         stage.setScene(scene);
         stage.show();
+    }
+
+    private void onCreateServerResponse(ProtocolMessage m) {
+        CreateServerResponse r = JsonUtil.fromJson(m.getPayload(), CreateServerResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        Server s = r.getServer();
+        if (servers.stream().noneMatch(x -> x.getId() == s.getId())) servers.add(s);
+        serverListView.getSelectionModel().select(s); // triggers onSelectServer -> loads channels
+        showAlert(Alert.AlertType.INFORMATION,
+                "Server \"" + s.getName() + "\" created!\nInvite code: " + s.getInviteCode()
+                        + "\n(Share it so others can join. Right-click the server to see it again.)");
+    }
+
+    private void onServerListResponse(ProtocolMessage m) {
+        ServerListResponse r = JsonUtil.fromJson(m.getPayload(), ServerListResponse.class);
+        servers.setAll(r.getServers() == null ? List.of() : r.getServers());
+    }
+
+    private void onJoinServerResponse(ProtocolMessage m) {
+        JoinServerResponse r = JsonUtil.fromJson(m.getPayload(), JoinServerResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        Server s = r.getServer();
+        if (servers.stream().noneMatch(x -> x.getId() == s.getId())) servers.add(s);
+        serverListView.getSelectionModel().select(s);
+        showAlert(Alert.AlertType.INFORMATION, r.getMessage());
+    }
+
+    private void onCreateChannelResponse(ProtocolMessage m) {
+        CreateChannelResponse r = JsonUtil.fromJson(m.getPayload(), CreateChannelResponse.class);
+        if (!r.isSuccess()) {
+            showAlert(Alert.AlertType.ERROR, r.getMessage());
+            return;
+        }
+        Room ch = r.getChannel();
+        if (ch != null && currentServerId != null && ch.getServerId() != null
+                && ch.getServerId().longValue() == currentServerId.longValue()) {
+            if (rooms.stream().noneMatch(x -> x.getId() == ch.getId())) rooms.add(ch);
+            roomListView.getSelectionModel().select(ch);
+        }
+    }
+
+    private void onChannelListResponse(ProtocolMessage m) {
+        ChannelListResponse r = JsonUtil.fromJson(m.getPayload(), ChannelListResponse.class);
+        if (currentServerId == null || r.getServerId() != currentServerId) return; // stale response
+        rooms.setAll(r.getChannels() == null ? List.of() : r.getChannels());
+    }
+
+    private void onChannelCreated(ProtocolMessage m) {
+        ChannelCreatedNotification n = JsonUtil.fromJson(m.getPayload(), ChannelCreatedNotification.class);
+        if (currentServerId != null && n.getServerId() == currentServerId && n.getChannel() != null
+                && rooms.stream().noneMatch(x -> x.getId() == n.getChannel().getId())) {
+            rooms.add(n.getChannel());
+        }
     }
 
     private void onUserListResponse(ProtocolMessage m) {

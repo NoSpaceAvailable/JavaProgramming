@@ -52,6 +52,7 @@ Hệ thống được chia làm 3 module Maven:
 ## 2. Tính năng
 
 - [x] **Đăng ký và đăng nhập** — mật khẩu được băm bằng BCrypt.
+- [x] **Server cộng đồng + kênh (channel)** — tạo server, mã mời (invite code), tham gia bằng mã; mỗi server có nhiều kênh text (kiểu Discord).
 - [x] **Phòng chat nhóm** — tạo, tham gia, rời phòng; hỗ trợ phòng công khai và riêng tư.
 - [x] **Thêm/mời người vào phòng** — bất kỳ thành viên nào cũng có thể thêm người dùng khác vào phòng (kể cả phòng riêng tư).
 - [x] **Xoá thành viên (kick)** — chủ phòng có thể xoá thành viên khỏi phòng.

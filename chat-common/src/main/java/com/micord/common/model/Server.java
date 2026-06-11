@@ -2,21 +2,22 @@ package com.micord.common.model;
 
 import java.time.LocalDateTime;
 
-public class Room {
+/** A community server (guild) that owns text channels and has members with roles. */
+public class Server {
     private long id;
     private String name;
-    private String description;
     private long ownerId;
-    private boolean isPrivate;
-    private Long serverId; // non-null => this room is a text channel of that server
+    private String inviteCode;
+    private String myRole; // the requesting user's role in this server (OWNER/ADMIN/MODERATOR/MEMBER)
     private LocalDateTime createdAt;
 
-    public Room() {}
+    public Server() {}
 
-    public Room(long id, String name, long ownerId) {
+    public Server(long id, String name, long ownerId, String inviteCode) {
         this.id = id;
         this.name = name;
         this.ownerId = ownerId;
+        this.inviteCode = inviteCode;
     }
 
     public long getId() { return id; }
@@ -25,17 +26,14 @@ public class Room {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
     public long getOwnerId() { return ownerId; }
     public void setOwnerId(long ownerId) { this.ownerId = ownerId; }
 
-    public boolean isPrivate() { return isPrivate; }
-    public void setPrivate(boolean isPrivate) { this.isPrivate = isPrivate; }
+    public String getInviteCode() { return inviteCode; }
+    public void setInviteCode(String inviteCode) { this.inviteCode = inviteCode; }
 
-    public Long getServerId() { return serverId; }
-    public void setServerId(Long serverId) { this.serverId = serverId; }
+    public String getMyRole() { return myRole; }
+    public void setMyRole(String myRole) { this.myRole = myRole; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

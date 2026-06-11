@@ -29,6 +29,12 @@ public class RequestDispatcher {
         handlers.put(MessageType.ROOM_MEMBERS_REQUEST, new RoomMembersHandler());
         handlers.put(MessageType.LIST_USERS_REQUEST, new ListUsersHandler());
 
+        handlers.put(MessageType.CREATE_SERVER_REQUEST, new CreateServerHandler());
+        handlers.put(MessageType.LIST_SERVERS_REQUEST, new ListServersHandler());
+        handlers.put(MessageType.JOIN_SERVER_REQUEST, new JoinServerHandler());
+        handlers.put(MessageType.CREATE_CHANNEL_REQUEST, new CreateChannelHandler());
+        handlers.put(MessageType.LIST_CHANNELS_REQUEST, new ListChannelsHandler());
+
         handlers.put(MessageType.SEND_MESSAGE_REQUEST, new SendMessageHandler());
         handlers.put(MessageType.PRIVATE_MESSAGE_REQUEST, new PrivateMessageHandler());
         handlers.put(MessageType.GET_HISTORY_REQUEST, new GetHistoryHandler());

@@ -14,9 +14,9 @@ public class RoomRepository {
     private static final Logger logger = LoggerFactory.getLogger(RoomRepository.class);
 
     public List<Room> findRoomsByUserId(long userId) {
-        String sql = "SELECT r.id, r.name, r.description, r.owner_id, r.is_private, r.created_at " +
+        String sql = "SELECT r.id, r.name, r.description, r.owner_id, r.is_private, r.server_id, r.created_at " +
                 "FROM rooms r INNER JOIN room_members rm ON r.id = rm.room_id " +
-                "WHERE rm.user_id = ? ORDER BY r.name";
+                "WHERE rm.user_id = ? AND r.server_id IS NULL ORDER BY r.name";
         List<Room> rooms = new ArrayList<>();
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -32,8 +32,8 @@ public class RoomRepository {
     }
 
     public List<Room> findAllPublicRooms() {
-        String sql = "SELECT id, name, description, owner_id, is_private, created_at " +
-                "FROM rooms WHERE is_private = FALSE ORDER BY name";
+        String sql = "SELECT id, name, description, owner_id, is_private, server_id, created_at " +
+                "FROM rooms WHERE is_private = FALSE AND server_id IS NULL ORDER BY name";
         List<Room> rooms = new ArrayList<>();
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -48,7 +48,7 @@ public class RoomRepository {
     }
 
     public Optional<Room> findById(long roomId) {
-        String sql = "SELECT id, name, description, owner_id, is_private, created_at FROM rooms WHERE id = ?";
+        String sql = "SELECT id, name, description, owner_id, is_private, server_id, created_at FROM rooms WHERE id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, roomId);
@@ -63,8 +63,8 @@ public class RoomRepository {
     }
 
     public Optional<Room> findByName(String name) {
-        String sql = "SELECT id, name, description, owner_id, is_private, created_at " +
-                "FROM rooms WHERE LOWER(name) = LOWER(?)";
+        String sql = "SELECT id, name, description, owner_id, is_private, server_id, created_at " +
+                "FROM rooms WHERE LOWER(name) = LOWER(?) AND server_id IS NULL";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, name);
@@ -165,8 +165,49 @@ public class RoomRepository {
         room.setDescription(rs.getString("description"));
         room.setOwnerId(rs.getLong("owner_id"));
         room.setPrivate(rs.getBoolean("is_private"));
+        long serverId = rs.getLong("server_id");
+        if (!rs.wasNull()) room.setServerId(serverId);
         Timestamp createdAt = rs.getTimestamp("created_at");
         if (createdAt != null) room.setCreatedAt(createdAt.toLocalDateTime());
         return room;
+    }
+
+    // ---- Channels (a room with a non-null server_id) ----
+
+    public Room createChannel(long serverId, String name, long ownerId) {
+        String sql = "INSERT INTO rooms (name, owner_id, is_private, server_id) VALUES (?, ?, FALSE, ?)";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, name);
+            stmt.setLong(2, ownerId);
+            stmt.setLong(3, serverId);
+            stmt.executeUpdate();
+            ResultSet keys = stmt.getGeneratedKeys();
+            if (keys.next()) {
+                Room channel = new Room(keys.getLong(1), name, ownerId);
+                channel.setServerId(serverId);
+                logger.info("Created channel '{}' (id={}) in server {}", name, channel.getId(), serverId);
+                return channel;
+            }
+            throw new SQLException("Failed to get generated key for channel");
+        } catch (SQLException e) {
+            logger.error("Error creating channel '{}' in server {}", name, serverId, e);
+            throw new RuntimeException("Failed to create channel", e);
+        }
+    }
+
+    public List<Room> findChannelsByServerId(long serverId) {
+        String sql = "SELECT id, name, description, owner_id, is_private, server_id, created_at " +
+                "FROM rooms WHERE server_id = ? ORDER BY created_at, id";
+        List<Room> channels = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, serverId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) channels.add(mapRoom(rs));
+        } catch (SQLException e) {
+            logger.error("Error finding channels for server {}", serverId, e);
+        }
+        return channels;
     }
 }
