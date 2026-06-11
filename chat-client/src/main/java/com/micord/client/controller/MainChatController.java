@@ -1391,8 +1391,16 @@ public class MainChatController implements MessageListener {
             for (User u : r.getMembers()) {
                 knownUsers.put(u.getId(), u);
                 if (u.getStatus() != null) userStatuses.put(u.getId(), u.getStatus());
+                // Keep our own role in sync (e.g. after the owner promotes/demotes us)
+                // so the right-click moderation menu reflects the new permissions.
+                if (u.getId() == currentUserId && u.getServerRole() != null) {
+                    currentServerRole = u.getServerRole();
+                    servers.stream().filter(s -> s.getId() == r.getServerId())
+                            .findFirst().ifPresent(s -> s.setMyRole(u.getServerRole()));
+                }
             }
             membersTitle.setText("MEMBERS — " + r.getMembers().size());
+            memberListView.refresh();
         }
     }
 
