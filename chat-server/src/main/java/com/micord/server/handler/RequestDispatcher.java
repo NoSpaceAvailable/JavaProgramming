@@ -38,6 +38,8 @@ public class RequestDispatcher {
         handlers.put(MessageType.CHANGE_ROLE_REQUEST, new ChangeRoleHandler());
         handlers.put(MessageType.KICK_FROM_SERVER_REQUEST, new KickFromServerHandler());
         handlers.put(MessageType.BAN_FROM_SERVER_REQUEST, new BanFromServerHandler());
+        handlers.put(MessageType.LIST_BANS_REQUEST, new ListBansHandler());
+        handlers.put(MessageType.UNBAN_REQUEST, new UnbanHandler());
         handlers.put(MessageType.VIEW_AUDIT_LOG_REQUEST, new ViewAuditLogHandler());
 
         handlers.put(MessageType.SEND_MESSAGE_REQUEST, new SendMessageHandler());

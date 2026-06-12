@@ -94,6 +94,7 @@ public class MainChatController implements MessageListener {
     @FXML private VBox messagesBox;
     @FXML private VBox membersPanel;
     @FXML private ScrollPane messagesScrollPane;
+    @FXML private Button jumpToBottomButton;
     @FXML private TextField messageInput;
     @FXML private Button attachButton;
     @FXML private Button gifButton;
@@ -230,7 +231,10 @@ public class MainChatController implements MessageListener {
                     MenuItem audit = new MenuItem("View audit log");
                     audit.setOnAction(e -> connection.send(JsonUtil.wrap(
                             MessageType.VIEW_AUDIT_LOG_REQUEST, new ViewAuditLogRequest(item.getId()))));
-                    menu.getItems().add(audit);
+                    MenuItem bans = new MenuItem("Manage bans");
+                    bans.setOnAction(e -> connection.send(JsonUtil.wrap(
+                            MessageType.LIST_BANS_REQUEST, new ListBansRequest(item.getId()))));
+                    menu.getItems().addAll(audit, bans);
                 }
                 setContextMenu(menu);
             }
@@ -339,9 +343,13 @@ public class MainChatController implements MessageListener {
         // Auto-scroll: remember if the user is at the bottom, and re-pin to the
         // bottom whenever the content grows (so new messages stay visible) — but
         // not if they've scrolled up to read history.
-        messagesScrollPane.vvalueProperty().addListener((o, ov, nv) -> atBottom = nv.doubleValue() >= 0.98);
+        messagesScrollPane.vvalueProperty().addListener((o, ov, nv) -> {
+            atBottom = nv.doubleValue() >= 0.98;
+            updateJumpButton();
+        });
         messagesBox.heightProperty().addListener((o, ov, nv) -> {
             if (atBottom) messagesScrollPane.setVvalue(1.0);
+            else updateJumpButton();
         });
 
         avatarPane.setOnMouseClicked(e -> showProfileDialog());
@@ -1037,6 +1045,7 @@ public class MainChatController implements MessageListener {
         bubbles.clear();
         messageAvatarNodes.clear();
         atBottom = true; // a freshly opened conversation should follow the latest messages
+        updateJumpButton();
         if (typingLabel != null) {
             typingLabel.setVisible(false);
             typingLabel.setManaged(false);
@@ -1087,6 +1096,7 @@ public class MainChatController implements MessageListener {
                 if (!r.isSuccess()) showAlert(Alert.AlertType.ERROR, r.getMessage());
             }
             case VIEW_AUDIT_LOG_RESPONSE -> onAuditLogResponse(message);
+            case LIST_BANS_RESPONSE -> onBanListResponse(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
             case MESSAGE_EDITED_NOTIFICATION -> onMessageEdited(message);
@@ -1443,6 +1453,51 @@ public class MainChatController implements MessageListener {
         showAlert(Alert.AlertType.WARNING,
                 (n.isBanned() ? "You were banned from \"" : "You were removed from \"") + n.getServerName() + "\""
                         + (n.getReason() != null && !n.getReason().isBlank() ? "\nReason: " + n.getReason() : ""));
+    }
+
+    private void onBanListResponse(ProtocolMessage m) {
+        BanListResponse r = JsonUtil.fromJson(m.getPayload(), BanListResponse.class);
+        long serverId = r.getServerId();
+        ObservableList<User> banned = FXCollections.observableArrayList(
+                r.getBannedUsers() == null ? List.of() : r.getBannedUsers());
+
+        ListView<User> list = new ListView<>();
+        list.setItems(banned);
+        list.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(User u, boolean empty) {
+                super.updateItem(u, empty);
+                if (empty || u == null) { setText(null); setGraphic(null); return; }
+                Label name = new Label(u.getDisplayName() + "  (@" + u.getUsername() + ")");
+                name.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+                Button unban = new Button("Unban");
+                unban.getStyleClass().add("button-link");
+                unban.setStyle("-fx-text-fill: #43b581; -fx-font-size: 12px;");
+                unban.setOnAction(e -> {
+                    connection.send(JsonUtil.wrap(MessageType.UNBAN_REQUEST, new UnbanRequest(serverId, u.getId())));
+                    banned.remove(u);
+                });
+                HBox cell = new HBox(8, name, spacer, unban);
+                cell.setAlignment(Pos.CENTER_LEFT);
+                cell.setStyle("-fx-padding: 6 4;");
+                setGraphic(cell);
+                setText(null);
+            }
+        });
+        Label title = new Label(banned.isEmpty() ? "No banned users" : "Banned users (" + banned.size() + ")");
+        title.setStyle("-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 8;");
+        VBox root = new VBox(title, list);
+        VBox.setVgrow(list, javafx.scene.layout.Priority.ALWAYS);
+        root.setStyle("-fx-background-color: #36393f;");
+        javafx.scene.Scene scene = new javafx.scene.Scene(root, 420, 460);
+        var css = getClass().getResource("/css/dark-theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+        javafx.stage.Stage stage = new javafx.stage.Stage();
+        stage.setTitle("Manage bans");
+        stage.setScene(scene);
+        stage.show();
     }
 
     private void onAuditLogResponse(ProtocolMessage m) {
@@ -2327,6 +2382,21 @@ public class MainChatController implements MessageListener {
     private void scrollToBottom() {
         if (!atBottom) return;
         Platform.runLater(() -> messagesScrollPane.setVvalue(1.0));
+    }
+
+    @FXML
+    private void handleJumpToBottom() {
+        atBottom = true;
+        messagesScrollPane.setVvalue(1.0);
+        updateJumpButton();
+    }
+
+    /** Shows the "jump to latest" button only while the user is scrolled up. */
+    private void updateJumpButton() {
+        if (jumpToBottomButton == null) return;
+        boolean show = !atBottom && active != null;
+        jumpToBottomButton.setVisible(show);
+        jumpToBottomButton.setManaged(show);
     }
 
     private void showAlert(Alert.AlertType type, String text) {
