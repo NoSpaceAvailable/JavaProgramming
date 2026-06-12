@@ -130,6 +130,7 @@ public class MainChatController implements MessageListener {
     private final Map<Long, Integer> roomUnread = new HashMap<>();
     private final Map<Long, Integer> dmUnread = new HashMap<>();
     private final java.util.Set<String> mentionedConversations = new java.util.HashSet<>(); // keys: "R"+roomId / "D"+userId
+    private boolean atBottom = true; // whether the message view is scrolled to the bottom (follow new messages)
     private final Map<Long, List<StackPane>> messageAvatarNodes = new HashMap<>();
     // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
     private final Map<Long, UserStatus> userStatuses = new HashMap<>();
@@ -334,6 +335,14 @@ public class MainChatController implements MessageListener {
         messagesScrollPane.setOnDragOver(this::onDragOver);
         messagesScrollPane.setOnDragDropped(this::onDragDropped);
         messagesScrollPane.setOnDragExited(e -> showDropOverlay(false));
+
+        // Auto-scroll: remember if the user is at the bottom, and re-pin to the
+        // bottom whenever the content grows (so new messages stay visible) — but
+        // not if they've scrolled up to read history.
+        messagesScrollPane.vvalueProperty().addListener((o, ov, nv) -> atBottom = nv.doubleValue() >= 0.98);
+        messagesBox.heightProperty().addListener((o, ov, nv) -> {
+            if (atBottom) messagesScrollPane.setVvalue(1.0);
+        });
 
         avatarPane.setOnMouseClicked(e -> showProfileDialog());
         userBadge.setOnMouseClicked(e -> showProfileDialog());
@@ -1027,6 +1036,7 @@ public class MainChatController implements MessageListener {
         messagesBox.getChildren().clear();
         bubbles.clear();
         messageAvatarNodes.clear();
+        atBottom = true; // a freshly opened conversation should follow the latest messages
         if (typingLabel != null) {
             typingLabel.setVisible(false);
             typingLabel.setManaged(false);
@@ -1906,9 +1916,11 @@ public class MainChatController implements MessageListener {
         m.setCreatedAt(java.time.LocalDateTime.ofInstant(
                 java.time.Instant.ofEpochMilli(n.getTimestamp()), ZoneId.systemDefault()));
         MessageBubble bubble = renderMessage(m);
+        // Always follow our own sent messages; for others' messages only if already at bottom.
+        if (n.getSenderId() == currentUserId) atBottom = true;
         messagesBox.getChildren().add(bubble.root);
         bubbles.put(m.getId(), bubble);
-        scrollToBottom();
+        // The messagesBox height listener re-pins to the bottom after layout (gated by atBottom).
     }
 
     private MessageBubble renderMessage(Message m) {
@@ -1937,18 +1949,14 @@ public class MainChatController implements MessageListener {
         header.setAlignment(Pos.BASELINE_LEFT);
 
         Node body;
-        Label textLabel = null;
+        javafx.scene.control.TextArea textArea = null;
         if (m.getMessageType() == Message.MessageType.GIF && m.getContent() != null && !m.getContent().isBlank()) {
             body = renderGifMessage(m.getContent());
         } else if (m.getAttachment() != null) {
             body = renderAttachment(m.getAttachment());
         } else {
-            Label text = new Label(m.getContent() == null ? "" : m.getContent());
-            text.getStyleClass().add("message-content");
-            text.setWrapText(true);
-            text.setMaxWidth(Double.MAX_VALUE);
-            body = text;
-            textLabel = text;
+            textArea = makeSelectableText(m.getContent());
+            body = textArea;
         }
 
         FlowPane reactionRow = new FlowPane(6, 4);
@@ -1970,28 +1978,53 @@ public class MainChatController implements MessageListener {
 
         MessageBubble bubble = new MessageBubble(container, reactionRow, m.getId());
         bubble.senderId = m.getSenderId();
-        bubble.textLabel = textLabel;
+        bubble.textArea = textArea;
         bubble.editedMarker = editedMarker;
         bubble.replaceReactions(m.getReactions());
 
         boolean isOwn = m.getSenderId() == currentUserId;
-        boolean editable = isOwn && textLabel != null; // only own TEXT messages can be edited
+        boolean editable = isOwn && textArea != null; // only own TEXT messages can be edited
+
+        if (textArea != null) {
+            // Right-click on the text: Copy (selection or whole), React, Edit/Delete.
+            // Dragging to select + Ctrl+C also works (native TextArea behaviour).
+            javafx.scene.control.TextArea ta = textArea;
+            ContextMenu menu = new ContextMenu();
+            MenuItem copy = new MenuItem("Copy");
+            copy.setOnAction(e -> {
+                String sel = ta.getSelectedText();
+                copyToClipboard(sel == null || sel.isEmpty() ? ta.getText() : sel);
+            });
+            MenuItem react = new MenuItem("Add reaction…");
+            react.setOnAction(e -> {
+                var b = ta.localToScreen(ta.getBoundsInLocal());
+                showReactionMenu(bubble, b.getMinX(), b.getMinY());
+            });
+            menu.getItems().addAll(copy, react);
+            if (editable) {
+                MenuItem edit = new MenuItem("Edit");
+                edit.setOnAction(e -> handleEditMessage(bubble));
+                menu.getItems().add(edit);
+            }
+            if (isOwn) {
+                MenuItem delete = new MenuItem("Delete");
+                delete.setOnAction(e -> handleDeleteMessage(bubble.messageId));
+                menu.getItems().add(delete);
+            }
+            ta.setContextMenu(menu);
+        }
+
+        // Right-click anywhere else on the bubble (GIF/file/avatar/padding).
         container.setOnMouseClicked(ev -> {
             if (ev.getButton() != MouseButton.SECONDARY) return;
             if (!isOwn) {
                 showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY());
                 return;
             }
-            // Own message: offer React + Edit/Delete.
             ContextMenu menu = new ContextMenu();
             MenuItem react = new MenuItem("Add reaction…");
             react.setOnAction(e -> showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY()));
             menu.getItems().add(react);
-            if (editable) {
-                MenuItem edit = new MenuItem("Edit");
-                edit.setOnAction(e -> handleEditMessage(bubble));
-                menu.getItems().add(edit);
-            }
             MenuItem delete = new MenuItem("Delete");
             delete.setOnAction(e -> handleDeleteMessage(bubble.messageId));
             menu.getItems().add(delete);
@@ -2000,9 +2033,40 @@ public class MainChatController implements MessageListener {
         return bubble;
     }
 
+    /** A read-only, transparent, auto-sizing TextArea so message text can be selected/copied. */
+    private javafx.scene.control.TextArea makeSelectableText(String content) {
+        javafx.scene.control.TextArea ta = new javafx.scene.control.TextArea(content == null ? "" : content);
+        ta.setEditable(false);
+        ta.setWrapText(true);
+        ta.setFocusTraversable(false);
+        ta.getStyleClass().add("message-text");
+        ta.setMaxWidth(Double.MAX_VALUE);
+        Runnable resize = () -> {
+            javafx.scene.Node textNode = ta.lookup(".text");
+            if (textNode != null) {
+                double h = textNode.getBoundsInLocal().getHeight();
+                double target = Math.max(h + 8, 22);
+                ta.setMinHeight(target);
+                ta.setPrefHeight(target);
+                ta.setMaxHeight(target);
+            }
+        };
+        ta.textProperty().addListener((o, a, b) -> Platform.runLater(resize));
+        ta.widthProperty().addListener((o, a, b) -> Platform.runLater(resize));
+        Platform.runLater(resize);
+        return ta;
+    }
+
+    private void copyToClipboard(String text) {
+        if (text == null) return;
+        javafx.scene.input.ClipboardContent c = new javafx.scene.input.ClipboardContent();
+        c.putString(text);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(c);
+    }
+
     private void handleEditMessage(MessageBubble bubble) {
-        if (bubble.textLabel == null) return;
-        TextInputDialog dialog = new TextInputDialog(bubble.textLabel.getText());
+        if (bubble.textArea == null) return;
+        TextInputDialog dialog = new TextInputDialog(bubble.textArea.getText());
         dialog.setTitle("Edit message");
         dialog.setHeaderText("Edit your message");
         dialog.setContentText("Message:");
@@ -2257,6 +2321,7 @@ public class MainChatController implements MessageListener {
     }
 
     private void scrollToBottom() {
+        if (!atBottom) return;
         Platform.runLater(() -> messagesScrollPane.setVvalue(1.0));
     }
 
@@ -2287,7 +2352,7 @@ public class MainChatController implements MessageListener {
         final Map<String, java.util.LinkedHashSet<Long>> reactions = new LinkedHashMap<>();
         final Map<String, Button> badges = new LinkedHashMap<>();
         long senderId;
-        Label textLabel;      // non-null only for editable TEXT messages
+        javafx.scene.control.TextArea textArea; // non-null only for TEXT messages (selectable/editable)
         Label editedMarker;   // faint "(edited)" label in the header
 
         MessageBubble(Node root, FlowPane reactionRow, long messageId) {
@@ -2297,7 +2362,7 @@ public class MainChatController implements MessageListener {
         }
 
         void applyEdit(String content) {
-            if (textLabel != null) textLabel.setText(content);
+            if (textArea != null) textArea.setText(content);
             if (editedMarker != null) {
                 editedMarker.setVisible(true);
                 editedMarker.setManaged(true);
