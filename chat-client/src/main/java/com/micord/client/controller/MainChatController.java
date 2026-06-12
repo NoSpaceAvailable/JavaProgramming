@@ -1761,8 +1761,18 @@ public class MainChatController implements MessageListener {
         ImageView iv = new ImageView(img);
         iv.setFitWidth(size);
         iv.setFitHeight(size);
-        iv.setPreserveRatio(true);
+        iv.setPreserveRatio(false);
         iv.setSmooth(true);
+        double width = img.getWidth();
+        double height = img.getHeight();
+        if (width > 0 && height > 0) {
+            double cropSize = Math.min(width, height);
+            iv.setViewport(new javafx.geometry.Rectangle2D(
+                    (width - cropSize) / 2,
+                    (height - cropSize) / 2,
+                    cropSize,
+                    cropSize));
+        }
         javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(size / 2, size / 2, size / 2);
         iv.setClip(clip);
         pane.getChildren().setAll(iv);
@@ -1827,14 +1837,8 @@ public class MainChatController implements MessageListener {
             if (file != null && file.length() <= 3 * 1024 * 1024) {
                 selectedAvatar[0] = file;
                 try {
-                    Image preview = new Image(file.toURI().toString(), 80, 80, true, true);
-                    ImageView iv = new ImageView(preview);
-                    iv.setFitWidth(80);
-                    iv.setFitHeight(80);
-                    iv.setPreserveRatio(true);
-                    javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(40, 40, 40);
-                    iv.setClip(clip);
-                    avatarPreview.getChildren().setAll(iv);
+                    Image preview = new Image(file.toURI().toString());
+                    applyAvatarToPane(avatarPreview, preview, 80);
                 } catch (Exception ignored) {}
                 changeAvatarLabel.setText(file.getName());
             } else if (file != null) {
