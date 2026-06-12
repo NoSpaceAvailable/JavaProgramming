@@ -39,7 +39,7 @@
 
 ## 1. Giới thiệu
 
-**Mini Discord** mô phỏng các chức năng cốt lõi của một ứng dụng nhắn tin nhóm hiện đại: đăng ký/đăng nhập, trò chuyện theo phòng (group chat), nhắn tin riêng 1-1 (DM), gửi file, thả cảm xúc (reaction), hiển thị trạng thái online và lịch sử tin nhắn.
+**Mini Discord** mô phỏng các chức năng cốt lõi của một ứng dụng nhắn tin nhóm hiện đại: đăng ký/đăng nhập, **server cộng đồng + kênh text** (kèm mã mời và phân quyền RBAC), trò chuyện theo phòng (group chat), nhắn tin riêng 1-1 (DM), gửi file, thả cảm xúc (reaction), `@mention`, đếm tin chưa đọc, hiển thị trạng thái online, lịch sử tin nhắn và nhật ký quản trị (audit log).
 
 Hệ thống được chia làm 3 module Maven:
 
@@ -112,7 +112,7 @@ Hệ thống hoạt động theo mô hình **client – server**, giao tiếp qu
 
 **Luồng xử lý phía server:**
 
-`ChatServer` (mở `ServerSocket`, mỗi client một luồng qua cached thread pool) → `ClientHandler` (đọc/ghi thông điệp có tiền tố độ dài 4 byte) → `RequestDispatcher` (định tuyến theo `MessageType`, chặn các yêu cầu chưa đăng nhập) → tầng **Service** (`AuthService`, `MessageService`, `RoomService`, `ReactionService`, `FileService`) → tầng **Repository** (truy xuất PostgreSQL).
+`ChatServer` (mở `ServerSocket`, mỗi client một luồng qua cached thread pool) → `ClientHandler` (đọc/ghi thông điệp có tiền tố độ dài 4 byte) → `RequestDispatcher` (định tuyến theo `MessageType`, chặn các yêu cầu chưa đăng nhập) → tầng **Service** (`AuthService`, `MessageService`, `RoomService`, `ServerService`, `ReactionService`, `FileService`) → tầng **Repository** (truy xuất PostgreSQL).
 
 `SessionManager` (singleton) quản lý các phiên đang online và thực hiện **broadcast** thông báo thời gian thực (tin nhắn mới, đổi trạng thái, reaction...) tới những client liên quan.
 
@@ -135,7 +135,7 @@ JavaProgramming/
 │
 ├── chat-common/             Module dùng chung
 │   └── src/main/java/com/micord/common/
-│       ├── model/           User, Room, Message, Reaction, FileAttachment, UserStatus
+│       ├── model/           User, Server, Room, Message, Reaction, FileAttachment, AuditEntry, UserStatus
 │       ├── protocol/        ProtocolMessage, MessageType
 │       │   ├── request/     Các DTO yêu cầu (Login, CreateRoom, SendMessage, ...)
 │       │   ├── response/    Các DTO phản hồi
@@ -180,7 +180,7 @@ Mỗi thông điệp trên đường truyền gồm **tiền tố độ dài 4 b
 | `requestId` | `String` | Mã UUID để ghép cặp yêu cầu – phản hồi |
 | `timestamp` | `long` | Thời điểm tạo (Unix ms) |
 
-- `MessageType` định nghĩa khoảng 50 loại thông điệp, chia nhóm: **Auth** (login/register), **Room** (tạo/tham gia/rời/liệt kê phòng), **Message** (gửi tin, lịch sử), **File** (upload/download theo chunk), **Reaction**, **Status**, **Profile/Avatar**, và **Notification** (server đẩy xuống client).
+- `MessageType` định nghĩa các loại thông điệp, chia nhóm: **Auth** (login/register), **Server & Channel** (tạo server, mã mời, tạo/liệt kê kênh), **RBAC** (thành viên server, đổi vai trò, kick/ban, audit log), **Room** (tạo/tham gia/rời/mời/liệt kê phòng), **Message** (gửi tin, lịch sử, tìm kiếm, sửa/xoá, @mention, typing), **File** (upload/download theo chunk), **Reaction**, **Status**, **Profile/Avatar**, và **Notification** (server đẩy xuống client).
 - `JsonUtil` dùng Gson để serialize, kèm **adapter tùy biến cho `LocalDateTime`** (lưu/đọc theo định dạng ISO-8601) nhằm tương thích với hệ thống module của Java 17.
 - Các hằng số chung trong `ProtocolConstants`: cổng mặc định `9000`, kích thước khối file `65536` (64KB), giới hạn file `50MB`, kích thước trang lịch sử `50`.
 
@@ -188,19 +188,23 @@ Mỗi thông điệp trên đường truyền gồm **tiền tố độ dài 4 b
 
 ## 7. Cơ sở dữ liệu
 
-CSDL **PostgreSQL** gồm 7 bảng, được khởi tạo **tự động** khi server chạy lần đầu (từ `schema.sql`):
+CSDL **PostgreSQL** gồm 11 bảng, được khởi tạo **tự động** khi server chạy lần đầu (từ `schema.sql`):
 
 | Bảng | Vai trò |
 |------|---------|
 | `users` | Tài khoản người dùng (username, mật khẩu băm, display name, avatar, trạng thái) |
-| `rooms` | Thông tin phòng chat (tên, mô tả, chủ phòng, công khai/riêng tư) |
-| `room_members` | Quan hệ thành viên – phòng (kèm vai trò OWNER/MEMBER) |
-| `messages` | Tin nhắn phòng và tin nhắn riêng (phân biệt qua `room_id`/`recipient_id`) |
+| `servers` | Server cộng đồng (tên, chủ server, mã mời) |
+| `server_members` | Thành viên server kèm vai trò RBAC (OWNER/ADMIN/MODERATOR/MEMBER) |
+| `server_bans` | Danh sách người bị ban khỏi server (chặn vào lại bằng mã mời) |
+| `audit_log` | Nhật ký hành động quản trị của từng server |
+| `rooms` | Phòng chat / kênh (`server_id` khác null ⇒ là kênh text của server) |
+| `room_members` | Quan hệ thành viên – phòng/kênh (kèm vai trò OWNER/MEMBER) |
+| `messages` | Tin nhắn phòng/kênh và tin riêng (phân biệt qua `room_id`/`recipient_id`, cờ `edited`) |
 | `file_attachments` | Metadata file đính kèm (đường dẫn, kích thước, MIME, checksum) |
 | `reactions` | Cảm xúc thả trên tin nhắn (ràng buộc duy nhất theo message + user + emoji) |
 | `dm_conversations` | Theo dõi các cuộc hội thoại riêng giữa hai người dùng |
 
-> **Lưu ý:** Bạn **không** cần chạy script SQL thủ công. Các bảng được tạo tự động khi server khởi động lần đầu.
+> **Lưu ý:** Bạn **không** cần chạy script SQL thủ công. Các bảng được tạo tự động khi server khởi động lần đầu (kèm migration idempotent cho các cột mới như `messages.edited`, `rooms.server_id`).
 
 ---
 
@@ -275,7 +279,7 @@ docker compose up --build -d
 Lệnh này sẽ:
 
 - Khởi tạo container PostgreSQL (`minidiscord-db`) với database `chat_app`.
-- Build và chạy chat-server (`minidiscord-server`), tự tạo 7 bảng khi khởi động.
+- Build và chạy chat-server (`minidiscord-server`), tự tạo các bảng khi khởi động.
 - Mở cổng `9000` ra máy host để client kết nối.
 
 Kiểm tra trạng thái và log:
