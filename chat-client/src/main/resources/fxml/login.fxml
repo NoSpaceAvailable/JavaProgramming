@@ -2,6 +2,8 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
 
 <StackPane xmlns:fx="http://javafx.com/fxml" styleClass="auth-wrapper"
@@ -12,15 +14,15 @@
 
         <VBox styleClass="auth-card" maxWidth="440" maxHeight="600" spacing="6" alignment="CENTER">
 
-            <!-- Branding: circular logo with stylised "M" + app name + tagline -->
-            <StackPane styleClass="auth-logo" prefWidth="68" prefHeight="68"
-                       maxWidth="68" maxHeight="68" minWidth="68" minHeight="68">
-                <Label text="M" style="-fx-text-fill: #ffffff; -fx-font-size: 34px; -fx-font-weight: bold;"/>
-            </StackPane>
+            <!-- App logo: full robot-head + "MICORD" wordmark baked into the PNG -->
+            <ImageView fitWidth="160" fitHeight="160" preserveRatio="true" smooth="true">
+                <image>
+                    <Image url="@../images/logo.png"/>
+                </image>
+            </ImageView>
 
-            <Region prefHeight="10"/>
+            <Region prefHeight="4"/>
 
-            <Label text="MICORD" styleClass="auth-tagline"/>
             <Label text="Welcome back!" styleClass="label-title"/>
             <Label text="Đăng nhập để tiếp tục" styleClass="label-subtitle"/>
 

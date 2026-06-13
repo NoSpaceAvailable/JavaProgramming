@@ -2,15 +2,19 @@ package com.micord.client.util;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Cursor;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 
 /** Builds a custom dark title bar and wraps it around a scene's root content. */
@@ -18,12 +22,27 @@ public final class TitleBar {
 
     private TitleBar() {}
 
+    private static Image cachedLogo;
+
     /** Wraps {@code content} in a VBox with a draggable dark title bar at the top. */
     public static Parent wrap(Stage stage, Parent content) {
         HBox bar = new HBox();
         bar.getStyleClass().add("title-bar");
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(0, 0, 0, 12));
+        bar.setPadding(new Insets(0, 8, 0, 10));
+
+        ImageView logo = new ImageView();
+        if (cachedLogo == null) {
+            var stream = TitleBar.class.getResourceAsStream("/images/logo.png");
+            if (stream != null) cachedLogo = new Image(stream);
+        }
+        if (cachedLogo != null) {
+            logo.setImage(cachedLogo);
+            logo.setFitHeight(20);
+            logo.setFitWidth(20);
+            logo.setPreserveRatio(true);
+            logo.setSmooth(true);
+        }
 
         Label title = new Label("Micord");
         title.getStyleClass().add("title-bar-text");
@@ -35,13 +54,46 @@ public final class TitleBar {
         minBtn.setOnAction(e -> stage.setIconified(true));
 
         Button maxBtn = barButton("☐");
-        maxBtn.setOnAction(e -> stage.setMaximized(!stage.isMaximized()));
 
         Button closeBtn = barButton("✕");
         closeBtn.getStyleClass().add("title-bar-close");
         closeBtn.setOnAction(e -> stage.close());
 
-        bar.getChildren().addAll(title, spacer, minBtn, maxBtn, closeBtn);
+        if (cachedLogo != null) {
+            bar.getChildren().addAll(logo, title, spacer, minBtn, maxBtn, closeBtn);
+        } else {
+            bar.getChildren().addAll(title, spacer, minBtn, maxBtn, closeBtn);
+        }
+
+        // Manual maximize: setMaximized() on an UNDECORATED stage on Windows leaves
+        // X/Y at the previous (dragged) position, so the window ends up offset and
+        // covering the taskbar. We track our own toggle state and resize to the
+        // current screen's *visual* bounds (which exclude the taskbar) instead.
+        final double[] savedGeometry = {-1, -1, -1, -1}; // x, y, w, h
+        final boolean[] isMaxed = {false};
+        Runnable toggleMaximize = () -> {
+            if (!isMaxed[0]) {
+                savedGeometry[0] = stage.getX();
+                savedGeometry[1] = stage.getY();
+                savedGeometry[2] = stage.getWidth();
+                savedGeometry[3] = stage.getHeight();
+                Rectangle2D vb = currentScreenBounds(stage);
+                stage.setX(vb.getMinX());
+                stage.setY(vb.getMinY());
+                stage.setWidth(vb.getWidth());
+                stage.setHeight(vb.getHeight());
+                isMaxed[0] = true;
+            } else {
+                if (savedGeometry[2] > 0) {
+                    stage.setX(savedGeometry[0]);
+                    stage.setY(savedGeometry[1]);
+                    stage.setWidth(savedGeometry[2]);
+                    stage.setHeight(savedGeometry[3]);
+                }
+                isMaxed[0] = false;
+            }
+        };
+        maxBtn.setOnAction(e -> toggleMaximize.run());
 
         // Drag + double-click to maximize.
         final double[] offset = {0, 0};
@@ -50,14 +102,14 @@ public final class TitleBar {
             offset[1] = e.getScreenY() - stage.getY();
         });
         bar.setOnMouseDragged(e -> {
-            if (!stage.isMaximized()) {
+            if (!isMaxed[0]) {
                 stage.setX(e.getScreenX() - offset[0]);
                 stage.setY(e.getScreenY() - offset[1]);
             }
         });
         bar.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2 && e.getY() < 32) {
-                stage.setMaximized(!stage.isMaximized());
+                toggleMaximize.run();
             }
         });
 
@@ -65,8 +117,7 @@ public final class TitleBar {
         wrapper.getStyleClass().add("title-bar-wrapper");
         VBox.setVgrow(content, Priority.ALWAYS);
 
-        // Simple bottom-right resize grip (so users can still resize a frameless window).
-        installResizeGrip(stage, wrapper);
+        installResizeGrip(stage, wrapper, isMaxed);
 
         return wrapper;
     }
@@ -78,14 +129,21 @@ public final class TitleBar {
         return b;
     }
 
-    /** Adds an invisible 8px resize zone along the bottom and right edges. */
-    private static void installResizeGrip(Stage stage, VBox wrapper) {
+    /** Finds the visual bounds of whichever screen the stage's top-left sits on. */
+    private static Rectangle2D currentScreenBounds(Stage stage) {
+        var screens = Screen.getScreensForRectangle(stage.getX(), stage.getY(), 1, 1);
+        Screen screen = screens.isEmpty() ? Screen.getPrimary() : screens.get(0);
+        return screen.getVisualBounds();
+    }
+
+    /** Adds an invisible 6px resize zone along the bottom and right edges. */
+    private static void installResizeGrip(Stage stage, VBox wrapper, boolean[] isMaxed) {
         final int EDGE = 6;
         final boolean[] resizing = {false};
         final double[] start = {0, 0, 0, 0};
 
         wrapper.setOnMouseMoved(e -> {
-            if (stage.isMaximized()) {
+            if (isMaxed[0]) {
                 wrapper.setCursor(Cursor.DEFAULT);
                 return;
             }
@@ -97,7 +155,7 @@ public final class TitleBar {
             else wrapper.setCursor(Cursor.DEFAULT);
         });
         wrapper.setOnMousePressed(e -> {
-            if (stage.isMaximized()) return;
+            if (isMaxed[0]) return;
             boolean right = e.getX() >= wrapper.getWidth() - EDGE;
             boolean bottom = e.getY() >= wrapper.getHeight() - EDGE;
             if (right || bottom) {
