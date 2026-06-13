@@ -26,20 +26,13 @@ public class SceneManager {
     }
 
     public static void switchTo(String sceneName) {
-        switchTo(sceneName, 900, 650);
+        switchTo(sceneName, 1100, 720);
     }
 
     public static void switchTo(String sceneName, double width, double height) {
         try {
-            String fxmlPath = fxmlMap.get(sceneName);
-            if (fxmlPath == null) {
-                throw new IllegalArgumentException("Unknown scene: " + sceneName);
-            }
-            FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
-            Parent root = loader.load();
-            Scene scene = new Scene(root);
-            String cssPath = SceneManager.class.getResource("/css/dark-theme.css").toExternalForm();
-            scene.getStylesheets().add(cssPath);
+            Parent content = loadFxml(sceneName);
+            Scene scene = buildScene(content);
             primaryStage.setScene(scene);
             primaryStage.setWidth(width);
             primaryStage.setHeight(height);
@@ -52,7 +45,7 @@ public class SceneManager {
     }
 
     public static <T> T switchToAndGetController(String sceneName) {
-        return switchToAndGetController(sceneName, 900, 650);
+        return switchToAndGetController(sceneName, 1100, 720);
     }
 
     public static <T> T switchToAndGetController(String sceneName, double width, double height) {
@@ -60,9 +53,7 @@ public class SceneManager {
             String fxmlPath = fxmlMap.get(sceneName);
             FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
             Parent root = loader.load();
-            Scene scene = new Scene(root);
-            String cssPath = SceneManager.class.getResource("/css/dark-theme.css").toExternalForm();
-            scene.getStylesheets().add(cssPath);
+            Scene scene = buildScene(root);
             primaryStage.setScene(scene);
             primaryStage.setWidth(width);
             primaryStage.setHeight(height);
@@ -72,6 +63,20 @@ public class SceneManager {
             logger.error("Failed to load scene: {}", sceneName, e);
             throw new RuntimeException("Failed to load scene: " + sceneName, e);
         }
+    }
+
+    private static Parent loadFxml(String sceneName) throws IOException {
+        String fxmlPath = fxmlMap.get(sceneName);
+        if (fxmlPath == null) throw new IllegalArgumentException("Unknown scene: " + sceneName);
+        return FXMLLoader.load(SceneManager.class.getResource(fxmlPath));
+    }
+
+    private static Scene buildScene(Parent content) {
+        Parent root = TitleBar.wrap(primaryStage, content);
+        Scene scene = new Scene(root);
+        String cssPath = SceneManager.class.getResource("/css/dark-theme.css").toExternalForm();
+        scene.getStylesheets().add(cssPath);
+        return scene;
     }
 
     public static Stage getPrimaryStage() { return primaryStage; }

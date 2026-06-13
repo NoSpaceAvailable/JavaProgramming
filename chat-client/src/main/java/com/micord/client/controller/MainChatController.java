@@ -80,7 +80,9 @@ import java.util.Set;
 public class MainChatController implements MessageListener {
 
     @FXML private Label userBadge;
+    @FXML private Label userStatusLabel;
     @FXML private Label connectionLabel;
+    @FXML private Circle connectionDot;
     @FXML private Label conversationTitle;
     @FXML private Label membersTitle;
     @FXML private Button leaveButton;
@@ -107,6 +109,12 @@ public class MainChatController implements MessageListener {
     @FXML private StackPane headerAvatarPane;
     @FXML private Label headerAvatarInitial;
     @FXML private Label headerStatusLabel;
+
+    // Grouping state: consecutive messages from the same sender within 5 minutes
+    // render as compact follow-ups (no avatar/header) — Discord-style.
+    private long previousSenderId = -1;
+    private long previousTimestamp = 0;
+    private static final long GROUP_WINDOW_MS = 5 * 60 * 1000;
 
     private final ServerConnection connection = ServerConnection.getInstance();
     private static final String GIPHY_API_KEY = "PDHk52ymG4k6romXp7nSfhZlkJwA8Nwo";
@@ -330,8 +338,10 @@ public class MainChatController implements MessageListener {
 
         statusCombo.getItems().setAll(UserStatus.ONLINE, UserStatus.AWAY);
         statusCombo.setValue(UserStatus.ONLINE);
+        applyOwnStatusVisuals(UserStatus.ONLINE);
         statusCombo.valueProperty().addListener((obs, oldV, newV) -> {
             if (suppressStatusEvents || newV == null) return;
+            applyOwnStatusVisuals(newV);
             connection.send(JsonUtil.wrap(MessageType.STATUS_UPDATE_REQUEST,
                     new StatusUpdateRequest(newV)));
         });
@@ -535,7 +545,7 @@ public class MainChatController implements MessageListener {
         }
         attachButton.setDisable(true);
         gifButton.setDisable(true);
-        showSystemPlaceholder("Select a room from the left or start a DM.");
+        showSystemPlaceholder("Chọn một phòng bên trái hoặc bắt đầu tin nhắn riêng.");
         connection.send(JsonUtil.wrap(MessageType.LIST_USERS_REQUEST, new Object()));
         connection.send(JsonUtil.wrap(MessageType.LIST_SERVERS_REQUEST, new Object()));
         loadOwnAvatar();
@@ -930,11 +940,30 @@ public class MainChatController implements MessageListener {
 
     private void onServerDisconnected() {
         connectionLabel.setText("Disconnected");
-        connectionLabel.setStyle("-fx-text-fill: #f04747; -fx-font-size: 12px;");
+        connectionLabel.setStyle("-fx-text-fill: #ed4245; -fx-font-size: 12px;");
+        if (connectionDot != null) connectionDot.setFill(Color.web("#ed4245"));
+        if (userStatusLabel != null) {
+            userStatusLabel.setText("Disconnected");
+            userStatusLabel.setStyle("-fx-text-fill: #ed4245; -fx-font-size: 11px;");
+        }
         messageInput.setDisable(true);
         attachButton.setDisable(true);
         gifButton.setDisable(true);
         statusCombo.setDisable(true);
+    }
+
+    /** Keeps the sidebar status dot and sub-label in sync with the user's own status. */
+    private void applyOwnStatusVisuals(UserStatus status) {
+        Color color = switch (status != null ? status : UserStatus.OFFLINE) {
+            case ONLINE -> Color.web("#23a55a");
+            case AWAY -> Color.web("#f0b232");
+            case OFFLINE -> Color.web("#80848e");
+        };
+        if (connectionDot != null) connectionDot.setFill(color);
+        if (userStatusLabel != null) {
+            userStatusLabel.setText(statusText(status));
+            userStatusLabel.setStyle("-fx-text-fill: " + toHex(color) + "; -fx-font-size: 11px;");
+        }
     }
 
     // ---- Conversation switching ----
@@ -964,7 +993,7 @@ public class MainChatController implements MessageListener {
         messageInput.setDisable(false);
         attachButton.setDisable(false);
         gifButton.setDisable(false);
-        messageInput.setPromptText("Message #" + room.getName());
+        messageInput.setPromptText("Nhắn tin #" + room.getName());
         headerAvatarPane.setVisible(false);
         headerAvatarPane.setManaged(false);
         headerStatusLabel.setVisible(false);
@@ -1003,7 +1032,7 @@ public class MainChatController implements MessageListener {
         messageInput.setDisable(false);
         attachButton.setDisable(false);
         gifButton.setDisable(false);
-        messageInput.setPromptText("Message @" + dm.displayName);
+        messageInput.setPromptText("Nhắn tin @" + dm.displayName);
         updateDmHeader(dm.userId, dm.displayName);
         clearMessages();
         clearTypingIndicator();
@@ -1016,7 +1045,7 @@ public class MainChatController implements MessageListener {
         headerAvatarPane.setManaged(true);
         Image peerAvatar = userAvatarCache.get(peerId);
         if (peerAvatar != null) {
-            applyAvatarToPane(headerAvatarPane, peerAvatar, 28);
+            applyAvatarToPane(headerAvatarPane, peerAvatar, 32);
         } else {
             String initial = (displayName != null && !displayName.isEmpty())
                     ? String.valueOf(Character.toUpperCase(displayName.charAt(0))) : "?";
@@ -1044,6 +1073,8 @@ public class MainChatController implements MessageListener {
         messagesBox.getChildren().clear();
         bubbles.clear();
         messageAvatarNodes.clear();
+        previousSenderId = -1;
+        previousTimestamp = 0;
         atBottom = true; // a freshly opened conversation should follow the latest messages
         updateJumpButton();
         if (typingLabel != null) {
@@ -1164,7 +1195,7 @@ public class MainChatController implements MessageListener {
         if (active != null && active.kind == Conversation.Kind.ROOM && active.id == r.getRoomId()) {
             active = null;
             currentRoom = null;
-            conversationTitle.setText("Select a room or DM");
+            conversationTitle.setText("Chọn một phòng hoặc DM");
             leaveButton.setVisible(false);
             leaveButton.setManaged(false);
             inviteButton.setVisible(false);
@@ -1256,7 +1287,7 @@ public class MainChatController implements MessageListener {
         if (active != null && active.kind == Conversation.Kind.ROOM && active.id == n.getRoomId()) {
             active = null;
             currentRoom = null;
-            conversationTitle.setText("Select a room or DM");
+            conversationTitle.setText("Chọn một phòng hoặc DM");
             leaveButton.setVisible(false);
             leaveButton.setManaged(false);
             inviteButton.setVisible(false);
@@ -1445,7 +1476,7 @@ public class MainChatController implements MessageListener {
             active = null;
             currentRoom = null;
             clearMessages();
-            conversationTitle.setText("Select a room or DM");
+            conversationTitle.setText("Chọn một phòng hoặc DM");
             members.clear();
             messageInput.setDisable(true);
             connection.send(JsonUtil.wrap(MessageType.LIST_ROOMS_REQUEST, new Object()));
@@ -1665,7 +1696,7 @@ public class MainChatController implements MessageListener {
         if (active != null && active.kind == Conversation.Kind.DM && active.id == n.getUserId()) {
             active = new Conversation(Conversation.Kind.DM, n.getUserId(), n.getDisplayName());
             conversationTitle.setText("@ " + n.getDisplayName());
-            messageInput.setPromptText("Message @" + n.getDisplayName());
+            messageInput.setPromptText("Nhắn tin @" + n.getDisplayName());
             updateDmHeader(n.getUserId(), n.getDisplayName());
         }
 
@@ -1686,6 +1717,7 @@ public class MainChatController implements MessageListener {
             return;
         }
         userStatuses.put(currentUserId, r.getStatus());
+        applyOwnStatusVisuals(r.getStatus());
     }
 
     private void onReactionNotification(ProtocolMessage m) {
@@ -1801,10 +1833,10 @@ public class MainChatController implements MessageListener {
             userAvatarCache.put(r.getUserId(), img);
             if (r.getUserId() == currentUserId) {
                 cachedAvatar = img;
-                applyAvatarToPane(avatarPane, img, 32);
+                applyAvatarToPane(avatarPane, img, 36);
             }
             if (active != null && active.kind == Conversation.Kind.DM && active.id == r.getUserId()) {
-                applyAvatarToPane(headerAvatarPane, img, 28);
+                applyAvatarToPane(headerAvatarPane, img, 32);
             }
             refreshMessageAvatarNodes(r.getUserId(), img);
             memberListView.refresh();
@@ -1987,25 +2019,38 @@ public class MainChatController implements MessageListener {
                 ? m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 : System.currentTimeMillis();
 
+        // Group consecutive messages from the same sender within GROUP_WINDOW_MS into one block:
+        // the first message renders with avatar + name + timestamp, follow-ups are compact.
+        boolean compact = previousSenderId == m.getSenderId()
+                && previousSenderId >= 0
+                && (timestamp - previousTimestamp) < GROUP_WINDOW_MS;
+
         String senderName = m.getSenderName() == null ? "Unknown" : m.getSenderName();
-        StackPane msgAvatar = createAvatarNode(m.getSenderId(), senderName, 36);
-        messageAvatarNodes.computeIfAbsent(m.getSenderId(), ignored -> new ArrayList<>()).add(msgAvatar);
 
-        Label nameLabel = new Label(senderName);
-        nameLabel.getStyleClass().add("sender-name");
-        nameLabel.setStyle(m.getSenderId() == currentUserId
-                ? "-fx-text-fill: #7289da;"
-                : "-fx-text-fill: #ffffff;");
-        Label timeLabel = new Label(formatTime(timestamp));
-        timeLabel.getStyleClass().add("timestamp");
+        Node leftSlot;
+        Label compactHoverTime = null;
+        if (compact) {
+            // Reserve the same horizontal space the avatar would take; show a faint
+            // timestamp on hover (Discord-style).
+            compactHoverTime = new Label(formatCompactTime(timestamp));
+            compactHoverTime.setStyle("-fx-text-fill: #80848e; -fx-font-size: 10px;");
+            compactHoverTime.setVisible(false);
+            StackPane slot = new StackPane(compactHoverTime);
+            slot.setMinWidth(36);
+            slot.setPrefWidth(36);
+            slot.setMaxWidth(36);
+            slot.setAlignment(Pos.TOP_CENTER);
+            leftSlot = slot;
+        } else {
+            StackPane msgAvatar = createAvatarNode(m.getSenderId(), senderName, 36);
+            messageAvatarNodes.computeIfAbsent(m.getSenderId(), ignored -> new ArrayList<>()).add(msgAvatar);
+            leftSlot = msgAvatar;
+        }
 
-        Label editedMarker = new Label("(edited)");
-        editedMarker.setStyle("-fx-text-fill: #72767d; -fx-font-size: 10px;");
+        Label editedMarker = new Label("(đã chỉnh sửa)");
+        editedMarker.setStyle("-fx-text-fill: #80848e; -fx-font-size: 10px;");
         editedMarker.setVisible(m.isEdited());
         editedMarker.setManaged(m.isEdited());
-
-        HBox header = new HBox(8, nameLabel, timeLabel, editedMarker);
-        header.setAlignment(Pos.BASELINE_LEFT);
 
         Node body;
         javafx.scene.control.TextArea textArea = null;
@@ -2022,18 +2067,47 @@ public class MainChatController implements MessageListener {
         reactionRow.setVisible(false);
         reactionRow.setManaged(false);
 
-        VBox contentColumn = new VBox(2, header, body, reactionRow);
-        contentColumn.getStyleClass().add("message-bubble");
+        VBox contentColumn = new VBox(2);
+        if (!compact) {
+            Label nameLabel = new Label(senderName);
+            nameLabel.getStyleClass().add("sender-name");
+            nameLabel.setStyle(m.getSenderId() == currentUserId
+                    ? "-fx-text-fill: #5865f2;"
+                    : "-fx-text-fill: #ffffff;");
+            Label timeLabel = new Label(formatTime(timestamp));
+            timeLabel.getStyleClass().add("timestamp");
+            HBox header = new HBox(8, nameLabel, timeLabel, editedMarker);
+            header.setAlignment(Pos.BASELINE_LEFT);
+            contentColumn.getChildren().add(header);
+        }
+        contentColumn.getChildren().addAll(body, reactionRow);
+        if (compact) {
+            // editedMarker still needs to live in the scene graph so applyEdit() can
+            // toggle its visibility later, even if it wasn't edited at first render.
+            contentColumn.getChildren().add(editedMarker);
+        }
+        contentColumn.getStyleClass().add(compact ? "message-bubble-compact" : "message-bubble");
         HBox.setHgrow(contentColumn, javafx.scene.layout.Priority.ALWAYS);
         // Highlight messages that @mention the current user (Discord-style ping).
         if (m.getMessageType() == Message.MessageType.TEXT && mentionsMe(m.getContent())) {
-            contentColumn.setStyle("-fx-background-color: rgba(250,166,26,0.10); "
-                    + "-fx-border-color: #faa61a; -fx-border-width: 0 0 0 3;");
+            contentColumn.setStyle("-fx-background-color: rgba(240,178,50,0.10); "
+                    + "-fx-border-color: #f0b232; -fx-border-width: 0 0 0 3;");
         }
 
-        HBox container = new HBox(10, msgAvatar, contentColumn);
+        HBox container = new HBox(10, leftSlot, contentColumn);
         container.setAlignment(Pos.TOP_LEFT);
-        container.setStyle("-fx-padding: 4 16 4 16;");
+        container.setStyle(compact
+                ? "-fx-padding: 1 16 1 16;"
+                : "-fx-padding: 8 16 2 16;");
+
+        if (compactHoverTime != null) {
+            final Label hover = compactHoverTime;
+            container.setOnMouseEntered(e -> hover.setVisible(true));
+            container.setOnMouseExited(e -> hover.setVisible(false));
+        }
+
+        previousSenderId = m.getSenderId();
+        previousTimestamp = timestamp;
 
         MessageBubble bubble = new MessageBubble(container, reactionRow, m.getId());
         bubble.senderId = m.getSenderId();
@@ -2143,18 +2217,46 @@ public class MainChatController implements MessageListener {
     }
 
     private Node renderGifMessage(String gifUrl) {
-        Image gif = new Image(gifUrl, 320, 0, true, true, true);
+        // Cap display width at 400 (Discord-style); the Image is downscaled to that
+        // width when loaded so memory stays reasonable.
+        final double MAX_WIDTH = 400;
+        Image gif = new Image(gifUrl, MAX_WIDTH, 0, true, true, true);
         ImageView iv = new ImageView(gif);
-        iv.setFitWidth(320);
+        iv.setFitWidth(MAX_WIDTH);
         iv.setPreserveRatio(true);
         iv.setSmooth(true);
         iv.setStyle("-fx-cursor: hand;");
         iv.setOnMouseClicked(e -> {
             try { Desktop.getDesktop().browse(new java.net.URI(gifUrl)); } catch (Exception ignored) {}
         });
+
+        // Rounded clip with safe fallbacks: width is fixed at fitWidth (since
+        // preserveRatio=true and we set fitWidth to MAX_WIDTH). Height is derived
+        // from the Image's natural aspect once loaded; until then it falls back
+        // to a generous value so the GIF is NEVER pre-clipped to invisible —
+        // this was the previous bug, where an initial 0x0 clip hid the image
+        // until a layout-bounds listener fired (sometimes too late or missed).
+        javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle(MAX_WIDTH, 4000);
+        clip.setArcWidth(12);
+        clip.setArcHeight(12);
+        clip.heightProperty().bind(javafx.beans.binding.Bindings.createDoubleBinding(
+                () -> {
+                    double imgW = gif.getWidth();
+                    double imgH = gif.getHeight();
+                    if (imgW > 0 && imgH > 0) {
+                        return MAX_WIDTH * (imgH / imgW);
+                    }
+                    return 4000.0; // generous fallback while async load is pending
+                },
+                gif.widthProperty(), gif.heightProperty()));
+        iv.setClip(clip);
+        iv.getStyleClass().add("gif-image");
+
         VBox container = new VBox(4, iv);
+        container.getStyleClass().add("gif-container");
+        container.setAlignment(Pos.TOP_LEFT);
         Label poweredBy = new Label("via GIPHY");
-        poweredBy.setStyle("-fx-text-fill: #72767d; -fx-font-size: 10px;");
+        poweredBy.setStyle("-fx-text-fill: #80848e; -fx-font-size: 10px; -fx-font-weight: bold;");
         container.getChildren().add(poweredBy);
         return container;
     }
@@ -2240,16 +2342,60 @@ public class MainChatController implements MessageListener {
     }
 
     private Node renderGenericAttachment(FileAttachment att) {
-        Label fileLabel = new Label("📎 " + att.getFileName() + " (" + formatBytes(att.getFileSize()) + ")");
-        fileLabel.setStyle("-fx-text-fill: #00b0f4; -fx-font-weight: bold;");
-        Button download = new Button("Download");
-        download.getStyleClass().add("button-link");
+        Label icon = new Label(fileIconFor(att));
+        icon.getStyleClass().add("file-card-icon");
+
+        Label name = new Label(att.getFileName());
+        name.getStyleClass().add("file-card-name");
+        Label meta = new Label(formatBytes(att.getFileSize()) + " • " + describeMime(att.getMimeType()));
+        meta.getStyleClass().add("file-card-meta");
+        VBox info = new VBox(2, name, meta);
+        info.setAlignment(Pos.CENTER_LEFT);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+
+        Button download = new Button("⬇ Tải về");
+        download.getStyleClass().add("file-card-download");
         download.setOnAction(e -> startDownload(att));
-        HBox box = new HBox(10, fileLabel, download);
-        box.setAlignment(Pos.CENTER_LEFT);
-        box.getStyleClass().add("message-content");
-        box.setStyle("-fx-background-color: #2f3136; -fx-background-radius: 6; -fx-padding: 8 12;");
-        return box;
+
+        HBox card = new HBox(12, icon, info, spacer, download);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.getStyleClass().add("file-card");
+        card.setMaxWidth(420);
+        return card;
+    }
+
+    /** Picks a glyph based on the file extension/MIME so the card has a recognisable face. */
+    private static String fileIconFor(FileAttachment att) {
+        String name = att.getFileName() == null ? "" : att.getFileName().toLowerCase();
+        String mime = att.getMimeType() == null ? "" : att.getMimeType().toLowerCase();
+        if (name.endsWith(".pdf") || mime.contains("pdf")) return "📕";
+        if (name.endsWith(".doc") || name.endsWith(".docx") || mime.contains("word")) return "📘";
+        if (name.endsWith(".xls") || name.endsWith(".xlsx") || mime.contains("excel") || mime.contains("spreadsheet")) return "📗";
+        if (name.endsWith(".ppt") || name.endsWith(".pptx") || mime.contains("presentation")) return "📙";
+        if (name.endsWith(".zip") || name.endsWith(".rar") || name.endsWith(".7z") || mime.contains("zip")) return "🗜";
+        if (name.endsWith(".txt") || name.endsWith(".md") || mime.startsWith("text/")) return "📄";
+        if (name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".flac") || mime.startsWith("audio/")) return "🎵";
+        if (mime.startsWith("video/")) return "🎬";
+        if (mime.startsWith("image/")) return "🖼";
+        return "📎";
+    }
+
+    /** Short human label for MIME (e.g. "PDF document", "Word document", "ZIP archive"). */
+    private static String describeMime(String mime) {
+        if (mime == null || mime.isBlank()) return "Tệp tin";
+        String m = mime.toLowerCase();
+        if (m.contains("pdf")) return "Tài liệu PDF";
+        if (m.contains("word")) return "Tài liệu Word";
+        if (m.contains("excel") || m.contains("spreadsheet")) return "Bảng tính";
+        if (m.contains("presentation")) return "Bài trình chiếu";
+        if (m.contains("zip") || m.contains("compressed")) return "Thư mục nén";
+        if (m.startsWith("text/")) return "Tệp văn bản";
+        if (m.startsWith("audio/")) return "Tệp âm thanh";
+        if (m.startsWith("video/")) return "Video";
+        if (m.startsWith("image/")) return "Hình ảnh";
+        return "Tệp tin";
     }
 
     private void openFileExternally(FileAttachment att) {
@@ -2348,10 +2494,15 @@ public class MainChatController implements MessageListener {
     }
 
     private VBox renderSystem(String text) {
-        Label l = new Label(text);
-        l.setStyle("-fx-text-fill: #72767d; -fx-font-style: italic; -fx-font-size: 12px;");
+        // System lines (user joined/left) reset the grouping window so the next real
+        // message renders with its full header again.
+        previousSenderId = -1;
+        previousTimestamp = 0;
+        Label l = new Label("— " + text + " —");
+        l.setStyle("-fx-text-fill: #80848e; -fx-font-style: italic; -fx-font-size: 12px;");
         VBox box = new VBox(l);
-        box.getStyleClass().add("message-bubble");
+        box.setAlignment(Pos.CENTER);
+        box.setStyle("-fx-padding: 6 16 6 16;");
         return box;
     }
 
@@ -2377,6 +2528,12 @@ public class MainChatController implements MessageListener {
             return "Yesterday " + when.format(TIME_FMT);
         }
         return when.format(DATE_TIME_FMT);
+    }
+
+    /** Just HH:mm — used as the faint hover-time on compact follow-up bubbles. */
+    private String formatCompactTime(long epochMillis) {
+        LocalDateTime when = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault());
+        return when.format(TIME_FMT);
     }
 
     private void scrollToBottom() {
@@ -2500,8 +2657,8 @@ public class MainChatController implements MessageListener {
             }
             boolean mine = users.contains(currentUserId);
             badge.setStyle(mine
-                    ? "-fx-background-color: #4f5d7a; -fx-text-fill: #ffffff; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 12px;"
-                    : "-fx-background-color: #2f3136; -fx-text-fill: #dcddde; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 12px;");
+                    ? "-fx-background-color: rgba(88,101,242,0.30); -fx-border-color: #5865f2; -fx-border-width: 1; -fx-border-radius: 10; -fx-text-fill: #ffffff; -fx-background-radius: 10; -fx-padding: 2 8; -fx-font-size: 12px; -fx-cursor: hand;"
+                    : "-fx-background-color: #2b2d31; -fx-border-color: #1e1f22; -fx-border-width: 1; -fx-border-radius: 10; -fx-text-fill: #dbdee1; -fx-background-radius: 10; -fx-padding: 2 8; -fx-font-size: 12px; -fx-cursor: hand;");
         }
 
         private void refreshVisibility() {

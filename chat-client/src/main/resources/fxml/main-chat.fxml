@@ -3,6 +3,7 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.Circle?>
 
 <BorderPane xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.micord.client.controller.MainChatController"
@@ -10,60 +11,75 @@
 
     <!-- Left sidebar: rooms + DMs -->
     <left>
-        <VBox styleClass="sidebar" prefWidth="240">
-            <HBox styleClass="sidebar-header" alignment="CENTER_LEFT" spacing="8">
-                <StackPane fx:id="avatarPane" prefWidth="32" prefHeight="32" minWidth="32" minHeight="32"
-                           style="-fx-background-color: #7289da; -fx-background-radius: 16; -fx-cursor: hand;">
+        <VBox styleClass="sidebar" prefWidth="260">
+            <HBox styleClass="sidebar-header" alignment="CENTER_LEFT" spacing="10">
+                <StackPane fx:id="avatarPane" prefWidth="36" prefHeight="36" minWidth="36" minHeight="36"
+                           style="-fx-background-color: #5865f2; -fx-background-radius: 18; -fx-cursor: hand;">
                     <Label fx:id="avatarInitial" text="U"
-                           style="-fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-font-weight: bold;"/>
+                           style="-fx-text-fill: #ffffff; -fx-font-size: 15px; -fx-font-weight: bold;"/>
                 </StackPane>
-                <Label fx:id="userBadge" text="@user" styleClass="label-title"
-                       style="-fx-font-size: 14px; -fx-cursor: hand;"/>
+                <VBox spacing="0">
+                    <Label fx:id="userBadge" text="@user"
+                           style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #ffffff; -fx-cursor: hand;"/>
+                    <Label fx:id="userStatusLabel" text="Online"
+                           style="-fx-font-size: 11px; -fx-text-fill: #80848e;"/>
+                </VBox>
                 <Region HBox.hgrow="ALWAYS"/>
             </HBox>
 
-            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 12 16 4 16;">
-                <Label text="SERVERS" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 14 16 6 16;">
+                <Label text="SERVERS" styleClass="sidebar-section-header"/>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button text="🏠" styleClass="button-link"
-                        style="-fx-font-size: 13px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleHome"/>
-                <Button text="+" styleClass="button-link"
-                        style="-fx-font-size: 18px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleCreateServer"/>
-                <Button text="⤵" styleClass="button-link"
-                        style="-fx-font-size: 14px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleJoinServer"/>
+                <Button text="⌂" styleClass="icon-button" onAction="#handleHome">
+                    <tooltip><Tooltip text="Trang chủ (Home)"/></tooltip>
+                </Button>
+                <Button text="+" styleClass="icon-button" onAction="#handleCreateServer"
+                        style="-fx-font-size: 17px;">
+                    <tooltip><Tooltip text="Tạo server mới"/></tooltip>
+                </Button>
+                <Button text="⇲" styleClass="icon-button" onAction="#handleJoinServer">
+                    <tooltip><Tooltip text="Tham gia server bằng mã mời"/></tooltip>
+                </Button>
             </HBox>
-            <ListView fx:id="serverListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="120"/>
+            <ListView fx:id="serverListView" styleClass="room-list" VBox.vgrow="SOMETIMES" prefHeight="120"/>
 
-            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 12 16 4 16;">
-                <Label fx:id="roomsHeader" text="ROOMS" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 14 16 6 16;">
+                <Label fx:id="roomsHeader" text="ROOMS" styleClass="sidebar-section-header"/>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button text="+" styleClass="button-link"
-                        style="-fx-font-size: 18px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleCreateRoom"/>
-                <Button text="↻" styleClass="button-link"
-                        style="-fx-font-size: 14px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleBrowseRooms"/>
+                <Button text="+" styleClass="icon-button" onAction="#handleCreateRoom"
+                        style="-fx-font-size: 17px;">
+                    <tooltip><Tooltip text="Tạo phòng/channel mới"/></tooltip>
+                </Button>
+                <Button text="↻" styleClass="icon-button" onAction="#handleBrowseRooms">
+                    <tooltip><Tooltip text="Duyệt phòng công khai"/></tooltip>
+                </Button>
             </HBox>
-            <ListView fx:id="roomListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="200"/>
+            <ListView fx:id="roomListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="180"/>
 
-            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 12 16 4 16;">
-                <Label text="DIRECT MESSAGES" style="-fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+            <HBox alignment="CENTER_LEFT" spacing="6" style="-fx-padding: 14 16 6 16;">
+                <Label text="DIRECT MESSAGES" styleClass="sidebar-section-header"/>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button text="+" styleClass="button-link"
-                        style="-fx-font-size: 18px; -fx-text-fill: #b9bbbe;"
-                        onAction="#handleNewDm"/>
+                <Button text="+" styleClass="icon-button" onAction="#handleNewDm"
+                        style="-fx-font-size: 17px;">
+                    <tooltip><Tooltip text="Tin nhắn riêng mới"/></tooltip>
+                </Button>
             </HBox>
-            <ListView fx:id="dmListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="200"/>
+            <ListView fx:id="dmListView" styleClass="room-list" VBox.vgrow="ALWAYS" prefHeight="180"/>
 
-            <HBox style="-fx-padding: 8 16; -fx-background-color: #292b2f;" alignment="CENTER_LEFT" spacing="8">
-                <Label fx:id="connectionLabel" text="Connected" style="-fx-text-fill: #43b581; -fx-font-size: 12px;"/>
-                <ComboBox fx:id="statusCombo" prefWidth="100"
-                          style="-fx-background-color: #2f3136; -fx-text-fill: #dcddde;"/>
-                <Region HBox.hgrow="ALWAYS"/>
-                <Button text="Logout" styleClass="button-link" onAction="#handleLogout"/>
+            <HBox styleClass="sidebar-footer" alignment="CENTER_LEFT" spacing="8">
+                <StackPane prefWidth="10" prefHeight="10" minWidth="10" minHeight="10">
+                    <Circle fx:id="connectionDot" radius="5" fill="#23a55a"/>
+                </StackPane>
+                <ComboBox fx:id="statusCombo" HBox.hgrow="ALWAYS" maxWidth="Infinity"
+                          styleClass="combo-box"/>
+                <Region HBox.hgrow="NEVER" minWidth="4"/>
+                <Button fx:id="logoutButton" text="⏻" styleClass="icon-button"
+                        onAction="#handleLogout"
+                        style="-fx-font-size: 16px; -fx-text-fill: #ed4245;">
+                    <tooltip><Tooltip text="Đăng xuất"/></tooltip>
+                </Button>
+                <!-- Hidden but retained for legacy code paths that read connectionLabel.text -->
+                <Label fx:id="connectionLabel" text="Connected" visible="false" managed="false"/>
             </HBox>
         </VBox>
     </left>
@@ -72,40 +88,49 @@
     <center>
         <BorderPane styleClass="chat-area">
             <top>
-                <HBox styleClass="chat-header" alignment="CENTER_LEFT" spacing="8">
-                    <StackPane fx:id="headerAvatarPane" prefWidth="28" prefHeight="28" minWidth="28" minHeight="28"
+                <HBox styleClass="chat-header" alignment="CENTER_LEFT" spacing="10">
+                    <StackPane fx:id="headerAvatarPane" prefWidth="32" prefHeight="32" minWidth="32" minHeight="32"
                                visible="false" managed="false"
-                               style="-fx-background-color: #7289da; -fx-background-radius: 14;">
+                               style="-fx-background-color: #5865f2; -fx-background-radius: 16;">
                         <Label fx:id="headerAvatarInitial" text=""
-                               style="-fx-text-fill: #ffffff; -fx-font-size: 12px; -fx-font-weight: bold;"/>
+                               style="-fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-font-weight: bold;"/>
                     </StackPane>
-                    <Label fx:id="conversationTitle" text="Select a room or DM" styleClass="label-title"
+                    <Label fx:id="conversationTitle" text="Chọn một phòng hoặc DM" styleClass="label-title"
                            style="-fx-font-size: 16px;"/>
                     <Label fx:id="headerStatusLabel" text="" style="-fx-font-size: 12px;"
                            visible="false" managed="false"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Button fx:id="searchButton" text="🔍 Search" styleClass="button-link"
-                            onAction="#handleSearchMessages" visible="false" managed="false"/>
-                    <Button fx:id="inviteButton" text="+ Add member" styleClass="button-link"
-                            onAction="#handleInviteMember" visible="false" managed="false"/>
-                    <Button fx:id="leaveButton" text="Leave Room" styleClass="button-link"
-                            onAction="#handleLeaveRoom" visible="false" managed="false"/>
+                    <Button fx:id="searchButton" text="🔍" styleClass="icon-button"
+                            onAction="#handleSearchMessages" visible="false" managed="false"
+                            style="-fx-font-size: 14px;">
+                        <tooltip><Tooltip text="Tìm kiếm tin nhắn"/></tooltip>
+                    </Button>
+                    <Button fx:id="inviteButton" text="👥+" styleClass="icon-button"
+                            onAction="#handleInviteMember" visible="false" managed="false"
+                            style="-fx-font-size: 13px;">
+                        <tooltip><Tooltip text="Thêm thành viên"/></tooltip>
+                    </Button>
+                    <Button fx:id="leaveButton" text="🚪" styleClass="icon-button"
+                            onAction="#handleLeaveRoom" visible="false" managed="false"
+                            style="-fx-font-size: 14px;">
+                        <tooltip><Tooltip text="Rời phòng"/></tooltip>
+                    </Button>
                 </HBox>
             </top>
             <center>
                 <StackPane>
                     <ScrollPane fx:id="messagesScrollPane" fitToWidth="true"
-                                style="-fx-background: #36393f; -fx-background-color: transparent;">
+                                style="-fx-background: #313338; -fx-background-color: transparent;">
                         <content>
-                            <VBox fx:id="messagesBox" spacing="2" style="-fx-padding: 16 0 16 0;"/>
+                            <VBox fx:id="messagesBox" spacing="0" style="-fx-padding: 16 0 16 0;"/>
                         </content>
                     </ScrollPane>
                     <VBox fx:id="dropOverlay" visible="false" managed="false" alignment="CENTER"
                           mouseTransparent="true"
-                          style="-fx-background-color: rgba(114,137,218,0.12); -fx-border-color: #7289da; -fx-border-width: 3; -fx-border-style: dashed; -fx-border-radius: 12; -fx-background-radius: 12;">
+                          style="-fx-background-color: rgba(88,101,242,0.12); -fx-border-color: #5865f2; -fx-border-width: 3; -fx-border-style: dashed; -fx-border-radius: 12; -fx-background-radius: 12;">
                         <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
-                        <Label text="Drop files here to upload"
-                               style="-fx-text-fill: #7289da; -fx-font-size: 20px; -fx-font-weight: bold;"/>
+                        <Label text="Thả file vào đây để upload"
+                               style="-fx-text-fill: #5865f2; -fx-font-size: 20px; -fx-font-weight: bold;"/>
                     </VBox>
                     <Button fx:id="jumpToBottomButton" text="⬇ Tin mới nhất" onAction="#handleJumpToBottom"
                             visible="false" managed="false" StackPane.alignment="BOTTOM_RIGHT"
@@ -118,17 +143,21 @@
                 <VBox styleClass="message-input-bar">
                     <padding><Insets top="8"/></padding>
                     <HBox spacing="8" alignment="CENTER">
-                        <Button fx:id="attachButton" text="📎" styleClass="button-link"
-                                style="-fx-font-size: 18px;" onAction="#handleAttachFile" disable="true"/>
-                        <Button fx:id="gifButton" text="GIF" styleClass="button-link"
-                                style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #b9bbbe; -fx-border-color: #b9bbbe; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 2 6;"
-                                onAction="#handleGifButton" disable="true"/>
+                        <Button fx:id="attachButton" text="📎" styleClass="icon-button"
+                                style="-fx-font-size: 18px;" onAction="#handleAttachFile" disable="true">
+                            <tooltip><Tooltip text="Đính kèm file"/></tooltip>
+                        </Button>
+                        <Button fx:id="gifButton" text="GIF" styleClass="icon-button"
+                                style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #b5bac1; -fx-border-color: #4f535c; -fx-border-radius: 4; -fx-background-radius: 4; -fx-padding: 3 7;"
+                                onAction="#handleGifButton" disable="true">
+                            <tooltip><Tooltip text="Gửi GIF"/></tooltip>
+                        </Button>
                         <TextField fx:id="messageInput" styleClass="message-input" HBox.hgrow="ALWAYS"
-                                   promptText="Send a message..." onAction="#handleSendMessage" disable="true"/>
+                                   promptText="Nhắn tin..." onAction="#handleSendMessage" disable="true"/>
                     </HBox>
-                    <Label fx:id="typingLabel" style="-fx-text-fill: #8e9297; -fx-font-size: 11px;"
+                    <Label fx:id="typingLabel" style="-fx-text-fill: #80848e; -fx-font-size: 11px; -fx-padding: 4 0 0 8;"
                            visible="false" managed="false"/>
-                    <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b9bbbe; -fx-font-size: 11px;"
+                    <Label fx:id="uploadStatusLabel" style="-fx-text-fill: #b5bac1; -fx-font-size: 11px; -fx-padding: 4 0 0 8;"
                            visible="false" managed="false"/>
                 </VBox>
             </bottom>
@@ -139,7 +168,7 @@
     <right>
         <VBox fx:id="membersPanel" styleClass="member-panel" prefWidth="220">
             <Label fx:id="membersTitle" text="MEMBERS"
-                   style="-fx-padding: 16; -fx-text-fill: #8e9297; -fx-font-size: 11px; -fx-font-weight: bold;"/>
+                   style="-fx-padding: 16; -fx-text-fill: #80848e; -fx-font-size: 11px; -fx-font-weight: bold;"/>
             <ListView fx:id="memberListView" styleClass="room-list" VBox.vgrow="ALWAYS"/>
         </VBox>
     </right>

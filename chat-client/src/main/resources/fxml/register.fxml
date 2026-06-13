@@ -7,53 +7,77 @@
 <StackPane xmlns:fx="http://javafx.com/fxml" styleClass="auth-wrapper"
            fx:controller="com.micord.client.controller.RegisterController">
 
-    <VBox styleClass="auth-card" maxWidth="420" maxHeight="600" spacing="8" alignment="CENTER">
+    <VBox alignment="CENTER" spacing="16">
+        <padding><Insets top="32" right="20" bottom="20" left="20"/></padding>
 
-        <Label text="Create an account" styleClass="label-title"/>
-        <Label text="Join Micord today" styleClass="label-subtitle"/>
+        <VBox styleClass="auth-card" maxWidth="460" maxHeight="700" spacing="6" alignment="CENTER">
 
-        <Region prefHeight="16"/>
+            <StackPane styleClass="auth-logo" prefWidth="68" prefHeight="68"
+                       maxWidth="68" maxHeight="68" minWidth="68" minHeight="68">
+                <Label text="M" style="-fx-text-fill: #ffffff; -fx-font-size: 34px; -fx-font-weight: bold;"/>
+            </StackPane>
 
-        <Label text="USERNAME" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
-               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
-        <TextField fx:id="usernameField" promptText="Choose a username" maxWidth="Infinity"/>
+            <Region prefHeight="10"/>
 
-        <Region prefHeight="4"/>
+            <Label text="MICORD" styleClass="auth-tagline"/>
+            <Label text="Tạo tài khoản" styleClass="label-title"/>
+            <Label text="Tham gia Micord ngay hôm nay" styleClass="label-subtitle"/>
 
-        <Label text="DISPLAY NAME" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
-               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
-        <TextField fx:id="displayNameField" promptText="How should we call you?" maxWidth="Infinity"/>
+            <Region prefHeight="18"/>
 
-        <Region prefHeight="4"/>
+            <Label text="TÊN ĐĂNG NHẬP"
+                   style="-fx-text-fill: #b5bac1; -fx-font-size: 12px; -fx-font-weight: bold;"
+                   maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+            <TextField fx:id="usernameField" promptText="Chọn tên đăng nhập" maxWidth="Infinity"/>
 
-        <Label text="PASSWORD" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
-               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
-        <PasswordField fx:id="passwordField" promptText="Create a password (min 6 characters)" maxWidth="Infinity"/>
+            <Region prefHeight="4"/>
 
-        <Region prefHeight="4"/>
+            <Label text="TÊN HIỂN THỊ"
+                   style="-fx-text-fill: #b5bac1; -fx-font-size: 12px; -fx-font-weight: bold;"
+                   maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+            <TextField fx:id="displayNameField" promptText="Bạn muốn được gọi là gì?" maxWidth="Infinity"/>
 
-        <Label text="CONFIRM PASSWORD" style="-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold;"
-               maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
-        <PasswordField fx:id="confirmPasswordField" promptText="Confirm your password" maxWidth="Infinity"
-                       onAction="#handleRegister"/>
+            <Region prefHeight="4"/>
 
-        <Region prefHeight="4"/>
+            <Label text="MẬT KHẨU"
+                   style="-fx-text-fill: #b5bac1; -fx-font-size: 12px; -fx-font-weight: bold;"
+                   maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+            <PasswordField fx:id="passwordField" promptText="Mật khẩu tối thiểu 6 ký tự" maxWidth="Infinity"/>
 
-        <Label fx:id="errorLabel" styleClass="label-error" wrapText="true" maxWidth="Infinity" visible="false"
-               managed="false"/>
-        <Label fx:id="successLabel" styleClass="label-success" wrapText="true" maxWidth="Infinity" visible="false"
-               managed="false"/>
+            <Region prefHeight="4"/>
 
-        <Region prefHeight="8"/>
+            <Label text="XÁC NHẬN MẬT KHẨU"
+                   style="-fx-text-fill: #b5bac1; -fx-font-size: 12px; -fx-font-weight: bold;"
+                   maxWidth="Infinity" alignment="BOTTOM_LEFT"/>
+            <PasswordField fx:id="confirmPasswordField" promptText="Nhập lại mật khẩu" maxWidth="Infinity"
+                           onAction="#handleRegister"/>
 
-        <Button fx:id="registerButton" text="Register" styleClass="button-primary" maxWidth="Infinity"
-                onAction="#handleRegister"/>
+            <Region prefHeight="4"/>
 
-        <HBox alignment="CENTER" spacing="4">
-            <padding><Insets top="8"/></padding>
-            <Label text="Already have an account?" style="-fx-text-fill: #72767d; -fx-font-size: 13px;"/>
-            <Button text="Log In" styleClass="button-link" onAction="#switchToLogin"/>
-        </HBox>
+            <Label fx:id="errorLabel" styleClass="label-error" wrapText="true" maxWidth="Infinity" visible="false"
+                   managed="false"/>
+            <Label fx:id="successLabel" styleClass="label-success" wrapText="true" maxWidth="Infinity" visible="false"
+                   managed="false"/>
 
+            <Region prefHeight="10"/>
+
+            <Button fx:id="registerButton" text="Đăng ký" styleClass="button-primary" maxWidth="Infinity"
+                    onAction="#handleRegister"/>
+
+            <Region prefHeight="6"/>
+
+            <Region styleClass="auth-divider" maxWidth="Infinity"/>
+
+            <HBox alignment="CENTER" spacing="4">
+                <padding><Insets top="8"/></padding>
+                <Label text="Đã có tài khoản?"
+                       style="-fx-text-fill: #80848e; -fx-font-size: 13px;"/>
+                <Button text="Đăng nhập" styleClass="button-link" onAction="#switchToLogin"/>
+            </HBox>
+
+        </VBox>
+
+        <Label text="© 2026 Micord" styleClass="auth-footer"/>
     </VBox>
+
 </StackPane>
