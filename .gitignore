@@ -38,3 +38,6 @@ build/
 ### App ###
 uploads/
 .claude/
+
+### ssh
+.ssh/
