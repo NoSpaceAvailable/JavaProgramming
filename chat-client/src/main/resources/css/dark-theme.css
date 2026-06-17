@@ -162,6 +162,34 @@
     -fx-font-size: 14px;
 }
 
+/* Selectable message text: a read-only TextArea styled to look like plain text. */
+.message-text {
+    -fx-text-fill: #dcddde;
+    -fx-font-size: 14px;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-highlight-fill: #5865f2;
+    -fx-highlight-text-fill: #ffffff;
+    -fx-faint-focus-color: transparent;
+    -fx-focus-color: transparent;
+}
+.message-text .content {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+.message-text .scroll-pane,
+.message-text .scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+.message-text .scroll-bar:vertical,
+.message-text .scroll-bar:horizontal {
+    -fx-opacity: 0;
+    -fx-pref-width: 0;
+    -fx-pref-height: 0;
+}
+
 /* === Room List === */
 .room-list .list-cell {
     -fx-background-color: transparent;

@@ -164,6 +164,39 @@ public class ServerRepository {
         }
     }
 
+    public void unban(long serverId, long userId) {
+        String sql = "DELETE FROM server_bans WHERE server_id = ? AND user_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, serverId);
+            stmt.setLong(2, userId);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            logger.error("Error unbanning user {} from server {}", userId, serverId, e);
+        }
+    }
+
+    public List<com.micord.common.model.User> getBannedUsers(long serverId) {
+        String sql = "SELECT u.id, u.username, u.display_name, u.avatar_url " +
+                "FROM server_bans b INNER JOIN users u ON b.user_id = u.id " +
+                "WHERE b.server_id = ? ORDER BY u.display_name";
+        List<com.micord.common.model.User> users = new ArrayList<>();
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, serverId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                com.micord.common.model.User u = new com.micord.common.model.User(
+                        rs.getLong("id"), rs.getString("username"), rs.getString("display_name"));
+                u.setAvatarUrl(rs.getString("avatar_url"));
+                users.add(u);
+            }
+        } catch (SQLException e) {
+            logger.error("Error listing bans for server {}", serverId, e);
+        }
+        return users;
+    }
+
     public boolean isBanned(long serverId, long userId) {
         String sql = "SELECT 1 FROM server_bans WHERE server_id = ? AND user_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();

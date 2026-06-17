@@ -33,7 +33,8 @@
 10. [Hướng dẫn chạy chương trình](#10-hướng-dẫn-chạy-chương-trình)
 11. [Cấu hình](#11-cấu-hình)
 12. [Các mẫu thiết kế (Design Patterns)](#12-các-mẫu-thiết-kế-design-patterns)
-13. [Xử lý sự cố thường gặp](#13-xử-lý-sự-cố-thường-gặp)
+13. [Lưu ý Git cho nhóm](#13-lưu-ý-git-cho-nhóm)
+14. [Xử lý sự cố thường gặp](#14-xử-lý-sự-cố-thường-gặp)
 
 ---
 
@@ -372,7 +373,22 @@ Cửa sổ đăng nhập sẽ hiện ra. Bạn có thể:
 
 ---
 
-## 13. Xử lý sự cố thường gặp
+## 13. Lưu ý Git cho nhóm
+
+Vì lịch sử repository đã được rewrite và force-push, những máy đang giữ bản cũ của `NoSpaceAvailable/JavaProgramming` cần đồng bộ lại theo remote để tránh tạo merge commit hoặc đẩy lại timeline cũ:
+
+```bash
+git fetch origin
+git reset --hard origin/master
+```
+
+> Lệnh `git reset --hard` sẽ xoá các thay đổi local chưa commit. Nếu đang có code riêng cần giữ lại, hãy commit hoặc stash trước khi chạy.
+
+Sau khi đã force-push, cả nhóm nên thống nhất một người chỉnh timeline cuối cùng. Nếu nhiều người tiếp tục push chồng lên lịch sử cũ rồi lại rebase/reset, vòng rewrite sẽ lặp lại và dễ làm mất công sức của nhau.
+
+---
+
+## 14. Xử lý sự cố thường gặp
 
 ### "database does not exist"
 

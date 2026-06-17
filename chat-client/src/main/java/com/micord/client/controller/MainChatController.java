@@ -94,6 +94,7 @@ public class MainChatController implements MessageListener {
     @FXML private VBox messagesBox;
     @FXML private VBox membersPanel;
     @FXML private ScrollPane messagesScrollPane;
+    @FXML private Button jumpToBottomButton;
     @FXML private TextField messageInput;
     @FXML private Button attachButton;
     @FXML private Button gifButton;
@@ -130,6 +131,7 @@ public class MainChatController implements MessageListener {
     private final Map<Long, Integer> roomUnread = new HashMap<>();
     private final Map<Long, Integer> dmUnread = new HashMap<>();
     private final java.util.Set<String> mentionedConversations = new java.util.HashSet<>(); // keys: "R"+roomId / "D"+userId
+    private boolean atBottom = true; // whether the message view is scrolled to the bottom (follow new messages)
     private final Map<Long, List<StackPane>> messageAvatarNodes = new HashMap<>();
     // Tracked status per known user, kept in sync with STATUS_CHANGE_NOTIFICATION.
     private final Map<Long, UserStatus> userStatuses = new HashMap<>();
@@ -229,7 +231,10 @@ public class MainChatController implements MessageListener {
                     MenuItem audit = new MenuItem("View audit log");
                     audit.setOnAction(e -> connection.send(JsonUtil.wrap(
                             MessageType.VIEW_AUDIT_LOG_REQUEST, new ViewAuditLogRequest(item.getId()))));
-                    menu.getItems().add(audit);
+                    MenuItem bans = new MenuItem("Manage bans");
+                    bans.setOnAction(e -> connection.send(JsonUtil.wrap(
+                            MessageType.LIST_BANS_REQUEST, new ListBansRequest(item.getId()))));
+                    menu.getItems().addAll(audit, bans);
                 }
                 setContextMenu(menu);
             }
@@ -334,6 +339,18 @@ public class MainChatController implements MessageListener {
         messagesScrollPane.setOnDragOver(this::onDragOver);
         messagesScrollPane.setOnDragDropped(this::onDragDropped);
         messagesScrollPane.setOnDragExited(e -> showDropOverlay(false));
+
+        // Auto-scroll: remember if the user is at the bottom, and re-pin to the
+        // bottom whenever the content grows (so new messages stay visible) — but
+        // not if they've scrolled up to read history.
+        messagesScrollPane.vvalueProperty().addListener((o, ov, nv) -> {
+            atBottom = nv.doubleValue() >= 0.98;
+            updateJumpButton();
+        });
+        messagesBox.heightProperty().addListener((o, ov, nv) -> {
+            if (atBottom) messagesScrollPane.setVvalue(1.0);
+            else updateJumpButton();
+        });
 
         avatarPane.setOnMouseClicked(e -> showProfileDialog());
         userBadge.setOnMouseClicked(e -> showProfileDialog());
@@ -1027,6 +1044,8 @@ public class MainChatController implements MessageListener {
         messagesBox.getChildren().clear();
         bubbles.clear();
         messageAvatarNodes.clear();
+        atBottom = true; // a freshly opened conversation should follow the latest messages
+        updateJumpButton();
         if (typingLabel != null) {
             typingLabel.setVisible(false);
             typingLabel.setManaged(false);
@@ -1077,6 +1096,7 @@ public class MainChatController implements MessageListener {
                 if (!r.isSuccess()) showAlert(Alert.AlertType.ERROR, r.getMessage());
             }
             case VIEW_AUDIT_LOG_RESPONSE -> onAuditLogResponse(message);
+            case LIST_BANS_RESPONSE -> onBanListResponse(message);
             case GET_HISTORY_RESPONSE -> onHistoryResponse(message);
             case SEARCH_MESSAGES_RESPONSE -> onSearchResponse(message);
             case MESSAGE_EDITED_NOTIFICATION -> onMessageEdited(message);
@@ -1435,6 +1455,51 @@ public class MainChatController implements MessageListener {
                         + (n.getReason() != null && !n.getReason().isBlank() ? "\nReason: " + n.getReason() : ""));
     }
 
+    private void onBanListResponse(ProtocolMessage m) {
+        BanListResponse r = JsonUtil.fromJson(m.getPayload(), BanListResponse.class);
+        long serverId = r.getServerId();
+        ObservableList<User> banned = FXCollections.observableArrayList(
+                r.getBannedUsers() == null ? List.of() : r.getBannedUsers());
+
+        ListView<User> list = new ListView<>();
+        list.setItems(banned);
+        list.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(User u, boolean empty) {
+                super.updateItem(u, empty);
+                if (empty || u == null) { setText(null); setGraphic(null); return; }
+                Label name = new Label(u.getDisplayName() + "  (@" + u.getUsername() + ")");
+                name.setStyle("-fx-text-fill: #dcddde; -fx-font-size: 13px;");
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+                Button unban = new Button("Unban");
+                unban.getStyleClass().add("button-link");
+                unban.setStyle("-fx-text-fill: #43b581; -fx-font-size: 12px;");
+                unban.setOnAction(e -> {
+                    connection.send(JsonUtil.wrap(MessageType.UNBAN_REQUEST, new UnbanRequest(serverId, u.getId())));
+                    banned.remove(u);
+                });
+                HBox cell = new HBox(8, name, spacer, unban);
+                cell.setAlignment(Pos.CENTER_LEFT);
+                cell.setStyle("-fx-padding: 6 4;");
+                setGraphic(cell);
+                setText(null);
+            }
+        });
+        Label title = new Label(banned.isEmpty() ? "No banned users" : "Banned users (" + banned.size() + ")");
+        title.setStyle("-fx-text-fill: #b9bbbe; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 8;");
+        VBox root = new VBox(title, list);
+        VBox.setVgrow(list, javafx.scene.layout.Priority.ALWAYS);
+        root.setStyle("-fx-background-color: #36393f;");
+        javafx.scene.Scene scene = new javafx.scene.Scene(root, 420, 460);
+        var css = getClass().getResource("/css/dark-theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+        javafx.stage.Stage stage = new javafx.stage.Stage();
+        stage.setTitle("Manage bans");
+        stage.setScene(scene);
+        stage.show();
+    }
+
     private void onAuditLogResponse(ProtocolMessage m) {
         AuditLogResponse r = JsonUtil.fromJson(m.getPayload(), AuditLogResponse.class);
         List<AuditEntry> entries = r.getEntries() == null ? List.of() : r.getEntries();
@@ -1751,8 +1816,18 @@ public class MainChatController implements MessageListener {
         ImageView iv = new ImageView(img);
         iv.setFitWidth(size);
         iv.setFitHeight(size);
-        iv.setPreserveRatio(true);
+        iv.setPreserveRatio(false);
         iv.setSmooth(true);
+        double width = img.getWidth();
+        double height = img.getHeight();
+        if (width > 0 && height > 0) {
+            double cropSize = Math.min(width, height);
+            iv.setViewport(new javafx.geometry.Rectangle2D(
+                    (width - cropSize) / 2,
+                    (height - cropSize) / 2,
+                    cropSize,
+                    cropSize));
+        }
         javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(size / 2, size / 2, size / 2);
         iv.setClip(clip);
         pane.getChildren().setAll(iv);
@@ -1817,14 +1892,8 @@ public class MainChatController implements MessageListener {
             if (file != null && file.length() <= 3 * 1024 * 1024) {
                 selectedAvatar[0] = file;
                 try {
-                    Image preview = new Image(file.toURI().toString(), 80, 80, true, true);
-                    ImageView iv = new ImageView(preview);
-                    iv.setFitWidth(80);
-                    iv.setFitHeight(80);
-                    iv.setPreserveRatio(true);
-                    javafx.scene.shape.Circle clip = new javafx.scene.shape.Circle(40, 40, 40);
-                    iv.setClip(clip);
-                    avatarPreview.getChildren().setAll(iv);
+                    Image preview = new Image(file.toURI().toString());
+                    applyAvatarToPane(avatarPreview, preview, 80);
                 } catch (Exception ignored) {}
                 changeAvatarLabel.setText(file.getName());
             } else if (file != null) {
@@ -1906,9 +1975,11 @@ public class MainChatController implements MessageListener {
         m.setCreatedAt(java.time.LocalDateTime.ofInstant(
                 java.time.Instant.ofEpochMilli(n.getTimestamp()), ZoneId.systemDefault()));
         MessageBubble bubble = renderMessage(m);
+        // Always follow our own sent messages; for others' messages only if already at bottom.
+        if (n.getSenderId() == currentUserId) atBottom = true;
         messagesBox.getChildren().add(bubble.root);
         bubbles.put(m.getId(), bubble);
-        scrollToBottom();
+        // The messagesBox height listener re-pins to the bottom after layout (gated by atBottom).
     }
 
     private MessageBubble renderMessage(Message m) {
@@ -1937,18 +2008,14 @@ public class MainChatController implements MessageListener {
         header.setAlignment(Pos.BASELINE_LEFT);
 
         Node body;
-        Label textLabel = null;
+        javafx.scene.control.TextArea textArea = null;
         if (m.getMessageType() == Message.MessageType.GIF && m.getContent() != null && !m.getContent().isBlank()) {
             body = renderGifMessage(m.getContent());
         } else if (m.getAttachment() != null) {
             body = renderAttachment(m.getAttachment());
         } else {
-            Label text = new Label(m.getContent() == null ? "" : m.getContent());
-            text.getStyleClass().add("message-content");
-            text.setWrapText(true);
-            text.setMaxWidth(Double.MAX_VALUE);
-            body = text;
-            textLabel = text;
+            textArea = makeSelectableText(m.getContent());
+            body = textArea;
         }
 
         FlowPane reactionRow = new FlowPane(6, 4);
@@ -1970,28 +2037,53 @@ public class MainChatController implements MessageListener {
 
         MessageBubble bubble = new MessageBubble(container, reactionRow, m.getId());
         bubble.senderId = m.getSenderId();
-        bubble.textLabel = textLabel;
+        bubble.textArea = textArea;
         bubble.editedMarker = editedMarker;
         bubble.replaceReactions(m.getReactions());
 
         boolean isOwn = m.getSenderId() == currentUserId;
-        boolean editable = isOwn && textLabel != null; // only own TEXT messages can be edited
+        boolean editable = isOwn && textArea != null; // only own TEXT messages can be edited
+
+        if (textArea != null) {
+            // Right-click on the text: Copy (selection or whole), React, Edit/Delete.
+            // Dragging to select + Ctrl+C also works (native TextArea behaviour).
+            javafx.scene.control.TextArea ta = textArea;
+            ContextMenu menu = new ContextMenu();
+            MenuItem copy = new MenuItem("Copy");
+            copy.setOnAction(e -> {
+                String sel = ta.getSelectedText();
+                copyToClipboard(sel == null || sel.isEmpty() ? ta.getText() : sel);
+            });
+            MenuItem react = new MenuItem("Add reaction…");
+            react.setOnAction(e -> {
+                var b = ta.localToScreen(ta.getBoundsInLocal());
+                showReactionMenu(bubble, b.getMinX(), b.getMinY());
+            });
+            menu.getItems().addAll(copy, react);
+            if (editable) {
+                MenuItem edit = new MenuItem("Edit");
+                edit.setOnAction(e -> handleEditMessage(bubble));
+                menu.getItems().add(edit);
+            }
+            if (isOwn) {
+                MenuItem delete = new MenuItem("Delete");
+                delete.setOnAction(e -> handleDeleteMessage(bubble.messageId));
+                menu.getItems().add(delete);
+            }
+            ta.setContextMenu(menu);
+        }
+
+        // Right-click anywhere else on the bubble (GIF/file/avatar/padding).
         container.setOnMouseClicked(ev -> {
             if (ev.getButton() != MouseButton.SECONDARY) return;
             if (!isOwn) {
                 showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY());
                 return;
             }
-            // Own message: offer React + Edit/Delete.
             ContextMenu menu = new ContextMenu();
             MenuItem react = new MenuItem("Add reaction…");
             react.setOnAction(e -> showReactionMenu(bubble, ev.getScreenX(), ev.getScreenY()));
             menu.getItems().add(react);
-            if (editable) {
-                MenuItem edit = new MenuItem("Edit");
-                edit.setOnAction(e -> handleEditMessage(bubble));
-                menu.getItems().add(edit);
-            }
             MenuItem delete = new MenuItem("Delete");
             delete.setOnAction(e -> handleDeleteMessage(bubble.messageId));
             menu.getItems().add(delete);
@@ -2000,9 +2092,40 @@ public class MainChatController implements MessageListener {
         return bubble;
     }
 
+    /** A read-only, transparent, auto-sizing TextArea so message text can be selected/copied. */
+    private javafx.scene.control.TextArea makeSelectableText(String content) {
+        javafx.scene.control.TextArea ta = new javafx.scene.control.TextArea(content == null ? "" : content);
+        ta.setEditable(false);
+        ta.setWrapText(true);
+        ta.setFocusTraversable(false);
+        ta.getStyleClass().add("message-text");
+        ta.setMaxWidth(Double.MAX_VALUE);
+        Runnable resize = () -> {
+            javafx.scene.Node textNode = ta.lookup(".text");
+            if (textNode != null) {
+                double h = textNode.getBoundsInLocal().getHeight();
+                double target = Math.max(h + 8, 22);
+                ta.setMinHeight(target);
+                ta.setPrefHeight(target);
+                ta.setMaxHeight(target);
+            }
+        };
+        ta.textProperty().addListener((o, a, b) -> Platform.runLater(resize));
+        ta.widthProperty().addListener((o, a, b) -> Platform.runLater(resize));
+        Platform.runLater(resize);
+        return ta;
+    }
+
+    private void copyToClipboard(String text) {
+        if (text == null) return;
+        javafx.scene.input.ClipboardContent c = new javafx.scene.input.ClipboardContent();
+        c.putString(text);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(c);
+    }
+
     private void handleEditMessage(MessageBubble bubble) {
-        if (bubble.textLabel == null) return;
-        TextInputDialog dialog = new TextInputDialog(bubble.textLabel.getText());
+        if (bubble.textArea == null) return;
+        TextInputDialog dialog = new TextInputDialog(bubble.textArea.getText());
         dialog.setTitle("Edit message");
         dialog.setHeaderText("Edit your message");
         dialog.setContentText("Message:");
@@ -2257,7 +2380,23 @@ public class MainChatController implements MessageListener {
     }
 
     private void scrollToBottom() {
+        if (!atBottom) return;
         Platform.runLater(() -> messagesScrollPane.setVvalue(1.0));
+    }
+
+    @FXML
+    private void handleJumpToBottom() {
+        atBottom = true;
+        messagesScrollPane.setVvalue(1.0);
+        updateJumpButton();
+    }
+
+    /** Shows the "jump to latest" button only while the user is scrolled up. */
+    private void updateJumpButton() {
+        if (jumpToBottomButton == null) return;
+        boolean show = !atBottom && active != null;
+        jumpToBottomButton.setVisible(show);
+        jumpToBottomButton.setManaged(show);
     }
 
     private void showAlert(Alert.AlertType type, String text) {
@@ -2287,7 +2426,7 @@ public class MainChatController implements MessageListener {
         final Map<String, java.util.LinkedHashSet<Long>> reactions = new LinkedHashMap<>();
         final Map<String, Button> badges = new LinkedHashMap<>();
         long senderId;
-        Label textLabel;      // non-null only for editable TEXT messages
+        javafx.scene.control.TextArea textArea; // non-null only for TEXT messages (selectable/editable)
         Label editedMarker;   // faint "(edited)" label in the header
 
         MessageBubble(Node root, FlowPane reactionRow, long messageId) {
@@ -2297,7 +2436,7 @@ public class MainChatController implements MessageListener {
         }
 
         void applyEdit(String content) {
-            if (textLabel != null) textLabel.setText(content);
+            if (textArea != null) textArea.setText(content);
             if (editedMarker != null) {
                 editedMarker.setVisible(true);
                 editedMarker.setManaged(true);

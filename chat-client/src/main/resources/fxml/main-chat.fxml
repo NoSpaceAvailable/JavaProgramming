@@ -107,6 +107,11 @@
                         <Label text="Drop files here to upload"
                                style="-fx-text-fill: #7289da; -fx-font-size: 20px; -fx-font-weight: bold;"/>
                     </VBox>
+                    <Button fx:id="jumpToBottomButton" text="⬇ Tin mới nhất" onAction="#handleJumpToBottom"
+                            visible="false" managed="false" StackPane.alignment="BOTTOM_RIGHT"
+                            style="-fx-background-color: #5865f2; -fx-text-fill: #ffffff; -fx-font-size: 12px; -fx-font-weight: bold; -fx-background-radius: 16; -fx-padding: 6 14; -fx-cursor: hand;">
+                        <StackPane.margin><Insets right="18" bottom="14"/></StackPane.margin>
+                    </Button>
                 </StackPane>
             </center>
             <bottom>

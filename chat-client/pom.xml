@@ -12,6 +12,11 @@
 
     <artifactId>chat-client</artifactId>
 
+    <properties>
+        <server.host>localhost</server.host>
+        <server.port>9000</server.port>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.micord</groupId>
@@ -51,6 +56,10 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.micord.client.Launcher</mainClass>
+                    <options>
+                        <option>-Dserver.host=${server.host}</option>
+                        <option>-Dserver.port=${server.port}</option>
+                    </options>
                 </configuration>
             </plugin>
         </plugins>

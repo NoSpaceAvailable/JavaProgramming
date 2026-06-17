@@ -178,6 +178,26 @@ public class ServerService {
         return new ModResult(true, (ban ? "Banned " : "Kicked ") + targetName, target);
     }
 
+    public List<User> listBans(long serverId, long actorId) {
+        if (rank(serverRepository.getRole(serverId, actorId)) < rank("ADMIN")) {
+            return List.of();
+        }
+        return serverRepository.getBannedUsers(serverId);
+    }
+
+    public ModResult unban(long serverId, long actorId, long targetId) {
+        if (rank(serverRepository.getRole(serverId, actorId)) < rank("ADMIN")) {
+            return new ModResult(false, "Only the owner or admins can unban", null);
+        }
+        serverRepository.unban(serverId, targetId);
+        User target = userRepository.findById(targetId).orElse(null);
+        User actor = userRepository.findById(actorId).orElse(null);
+        String targetName = target != null ? target.getDisplayName() : "User " + targetId;
+        auditRepository.log(serverId, actorId, actor != null ? actor.getDisplayName() : null,
+                "UNBAN", "Unbanned " + targetName);
+        return new ModResult(true, "Unbanned " + targetName, target);
+    }
+
     /** Discord-style channel names: lowercase, spaces -> hyphens. */
     private String normalizeChannelName(String raw) {
         String n = raw.trim().toLowerCase().replaceAll("\\s+", "-");
