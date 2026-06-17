@@ -17,11 +17,6 @@ services:
       POSTGRES_DB: chat_app
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ABCabc123@@@
-    ports:
-      # Host 5433 -> container 5432 (host already runs PostgreSQL on 5432).
-      # Only needed if you want to inspect the DB from the host; server uses
-      # the internal docker network and does not rely on this mapping.
-      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
